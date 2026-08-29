@@ -54,6 +54,12 @@ S.DEFAULT_OVERRIDE_PENALTY = 12
 -- Dominates every real score, so a tank holding Salvation is always corrected.
 S.SALV_ON_TANK = -10000
 
+-- Talent fit never outweighs what the raid actually wants: it only separates
+-- sets the members value identically. All member-facing values are integers, and
+-- talent weight is capped at 100 per blessing over at most six blessings, so
+-- this can never overturn a real difference of even one point.
+S.TALENT_TIEBREAK = 0.0001
+
 local function defaultConfig()
 	return {
 		weights = S.DEFAULT_WEIGHTS,
@@ -107,6 +113,7 @@ function S:PrepareMembers(members, ctx, config)
 			class = m.class,
 			classID = B.CLASS_IDS[m.class],
 			tank = m.tank and true or false,
+			role = profile and profile.role or nil,
 			profileKey = key,
 			profileLabel = profile and profile.label or key,
 			-- The profile's priority list resolved against tonight's raid:
@@ -132,42 +139,99 @@ function S:Value(member, blessing, config)
 end
 
 --------------------------------------------------------------------------
--- Bipartite matching: which paladin casts which blessing
+-- Assignment: which paladin casts which blessing
 --------------------------------------------------------------------------
 
--- Kuhn's algorithm. Tiny inputs (at most 6 blessings, a handful of paladins),
--- so clarity beats asymptotics here.
-local function tryAssign(blessingIdx, blessings, paladins, matchOf, seen)
-	local blessing = blessings[blessingIdx]
-	for pi = 1, #paladins do
-		local p = paladins[pi]
-		if not seen[pi] and p.canCast and p.canCast[blessing] then
-			seen[pi] = true
-			if matchOf[pi] == nil or tryAssign(matchOf[pi], blessings, paladins, matchOf, seen) then
-				matchOf[pi] = blessingIdx
-				return true
-			end
-		end
-	end
-	return false
+-- How much better this paladin casts this blessing than a paladin without the
+-- talent, as a 0-100 fraction of the full talent. Normalised by each talent's
+-- own max rank so that Improved Might (5 points) does not outrank Improved
+-- Wisdom (2 points) purely by having more points to spend.
+function S:TalentWeight(paladin, blessing)
+	local max = B.IMPROVED_MAX_RANK[blessing]
+	if not max then return 0 end
+	local points = paladin.talents and paladin.talents[blessing] or 0
+	if points <= 0 then return 0 end
+	if points > max then points = max end
+	return (points * 100) / max
 end
 
---- Find a paladin for every blessing in the set.
--- @return map of blessing id -> paladin index, or nil if the set cannot be staffed
+--- Assign every blessing in the set to a distinct paladin who can cast it,
+--- choosing the assignment that puts the most improved blessings in the hands
+--- of the paladins actually specced for them.
+--
+-- This is a maximum-weight bipartite matching, and it is solved exactly rather
+-- than greedily on purpose. Greedily handing each blessing to the best-specced
+-- paladin fails the case the whole feature exists for: a paladin specced into
+-- two or three improved blessings can only cast one of them here, and taking
+-- their strongest in isolation can strand another paladin's talent entirely.
+-- The optimum has to be found across all paladins at once.
+--
+-- Done as a DP over paladins with a bitmask of covered blessings. At most six
+-- blessings means 64 masks, so this is exact and still trivially cheap.
+-- @return holders (blessing id -> paladin index), total talent weight; or nil
 function S:MatchBlessings(blessings, paladins)
-	local matchOf = {}  -- paladin index -> blessing index
-	for bi = 1, #blessings do
-		local seen = {}
-		if not tryAssign(bi, blessings, paladins, matchOf, seen) then
-			return nil
+	local k = #blessings
+	if k == 0 then return {}, 0 end
+
+	local full = 2 ^ k - 1
+	local NEG = -math.huge
+
+	local dp = {}
+	for mask = 0, full do dp[mask] = NEG end
+	dp[0] = 0
+
+	-- choice[i][mask] = blessing index paladin i took to arrive at mask (0 = none)
+	local choice = {}
+
+	for i = 1, #paladins do
+		local pally = paladins[i]
+		local ndp, nchoice = {}, {}
+		for mask = 0, full do ndp[mask] = NEG end
+
+		for mask = 0, full do
+			local base = dp[mask]
+			if base > NEG then
+				-- This paladin sits this column out.
+				if base > ndp[mask] then
+					ndp[mask] = base
+					nchoice[mask] = 0
+				end
+				-- Or takes one blessing not yet covered.
+				for bi = 1, k do
+					local bit = 2 ^ (bi - 1)
+					if math.floor(mask / bit) % 2 == 0 then
+						local blessing = blessings[bi]
+						if pally.canCast and pally.canCast[blessing] then
+							local w = base + self:TalentWeight(pally, blessing)
+							local nm = mask + bit
+							if w > ndp[nm] then
+								ndp[nm] = w
+								nchoice[nm] = bi
+							end
+						end
+					end
+				end
+			end
+		end
+
+		dp = ndp
+		choice[i] = nchoice
+	end
+
+	if dp[full] == NEG then
+		return nil
+	end
+
+	local holders, mask = {}, full
+	for i = #paladins, 1, -1 do
+		local bi = choice[i][mask]
+		if bi and bi > 0 then
+			holders[blessings[bi]] = i
+			mask = mask - 2 ^ (bi - 1)
 		end
 	end
 
-	local holders = {}
-	for pi, bi in pairs(matchOf) do
-		holders[blessings[bi]] = pi
-	end
-	return holders
+	return holders, dp[full]
 end
 
 --------------------------------------------------------------------------
@@ -245,7 +309,7 @@ function S:ScoreSet(members, blessingSet, holders, paladins, config)
 		local ovr, gain = self:ComputeOverrides(m, blessingSet, holders, paladins, config)
 		total = total + gain
 		if #ovr > 0 then
-			memberOverrides[m.name] = { list = ovr, tank = m.tank }
+			memberOverrides[m.name] = { list = ovr, tank = m.tank, role = m.role }
 		end
 	end
 
@@ -255,7 +319,7 @@ end
 --- Solve a single class column.
 function S:SolveClass(members, paladins, config)
 	if #members == 0 or #paladins == 0 then
-		return { blessings = {}, holders = {}, overrides = {}, score = 0 }
+		return { blessings = {}, holders = {}, overrides = {}, score = 0, ranked = 0, talentWeight = 0 }
 	end
 
 	local maxSize = #paladins
@@ -272,17 +336,21 @@ function S:SolveClass(members, paladins, config)
 		end
 
 		if #set <= maxSize then
-			local holders = self:MatchBlessings(set, paladins)
+			local holders, talentWeight = self:MatchBlessings(set, paladins)
 			if holders then
 				local score, overrides = self:ScoreSet(members, set, holders, paladins, config)
-				if best == nil or score > best.score then
-					best = { blessings = set, holders = holders, overrides = overrides, score = score }
+				local ranked = score + (talentWeight or 0) * self.TALENT_TIEBREAK
+				if best == nil or ranked > best.ranked then
+					best = {
+						blessings = set, holders = holders, overrides = overrides,
+						score = score, ranked = ranked, talentWeight = talentWeight or 0,
+					}
 				end
 			end
 		end
 	end
 
-	return best or { blessings = {}, holders = {}, overrides = {}, score = 0 }
+	return best or { blessings = {}, holders = {}, overrides = {}, score = 0, ranked = 0, talentWeight = 0 }
 end
 
 --------------------------------------------------------------------------
@@ -343,16 +411,17 @@ function S:Solve(raid, config)
 
 		for memberName, entry in pairs(solved.overrides) do
 			for _, o in ipairs(entry.list) do
+				local mandatory = (entry.tank and o.from == B.SALVATION) or false
 				result.overrides[#result.overrides + 1] = {
 					paladin = paladins[o.paladin].name,
 					classID = classID,
 					target = memberName,
 					blessing = o.to,
 					replaces = o.from,
-					-- Mandatory means rule zero: this override exists because a
-					-- tank must not keep Salvation, not because it is an
-					-- upgrade the user could reasonably skip.
-					mandatory = (entry.tank and o.from == B.SALVATION) or false,
+					-- Mandatory means a tank must not keep Salvation, as opposed
+					-- to an upgrade the user could reasonably skip.
+					mandatory = mandatory,
+					reason = self:OverrideReason(entry, mandatory),
 				}
 			end
 		end
@@ -379,9 +448,34 @@ function S:Solve(raid, config)
 	return result
 end
 
+--- Why this player is being singled out, phrased as the thing a raid leader
+--- would say out loud rather than as an internal category.
+function S:OverrideReason(entry, mandatory)
+	if mandatory or entry.role == "TANK" then return "TANK" end
+	if entry.role == "HEALER" then return "HEALER" end
+	if entry.role == "CASTER" then return "CASTER" end
+	if entry.role == "MELEE" then return "PHYSICAL" end
+	return "UPGRADE"
+end
+
 --- Post-solve sanity checks. These are invariants, not preferences: if one of
 --- these fires it is a bug in the engine, not a debatable assignment.
 function S:Validate(result)
+	-- A paladin we have not yet heard from is credited only with the blessings
+	-- every paladin can train. Kings in particular is withheld until seen, so
+	-- say so rather than quietly producing a Kings-less plan.
+	local assumed = {}
+	for _, p in ipairs(result.paladins) do
+		if p.capabilitiesKnown == false then
+			assumed[#assumed + 1] = p.name
+		end
+	end
+	if #assumed > 0 then
+		result.warnings[#result.warnings + 1] =
+			("Talents unknown for %s -- assuming no Kings or Sanctuary until PallyPower syncs them.")
+				:format(table.concat(assumed, ", "))
+	end
+
 	local delivered = {}
 	for i = 1, #result.members do
 		delivered[result.members[i].name] = {}

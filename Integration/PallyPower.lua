@@ -96,19 +96,28 @@ end
 function PP:CapabilitiesFor(name)
 	local info = self.observed[name]
 	if not info then
-		-- Unheard-from paladin: assume the common case (everything but
-		-- Sanctuary) so we still produce a usable plan.
-		return {
-			[B.WISDOM] = true, [B.MIGHT] = true, [B.KINGS] = true,
-			[B.SALVATION] = true, [B.LIGHT] = true,
-		}, false
+		-- Unheard-from paladin: credit only what every paladin can train.
+		--
+		-- It is tempting to assume Kings, since almost every raiding paladin
+		-- specs it. But "almost every" is the problem: assigning Kings to the
+		-- one paladin who skipped it leaves a whole class column unbuffed and
+		-- nothing says so. A plan that under-uses a paladin is recoverable in
+		-- seconds; one that quietly drops a blessing is not.
+		local caps = {}
+		for blessing in pairs(B.ALWAYS_TRAINABLE) do caps[blessing] = true end
+		return caps, {}, false
 	end
 
-	local caps = {}
+	local caps, talents = {}, {}
 	for i = 1, 6 do
-		if info[i] then caps[i] = true end
+		if info[i] then
+			caps[i] = true
+			-- PallyPower reports improved-talent ranks for Wisdom, Might and
+			-- Sanctuary only; the rest come back as zero.
+			talents[i] = info[i].talent or 0
+		end
 	end
-	return caps, true
+	return caps, talents, true
 end
 
 --- Infer a paladin's spec from the talent points PallyPower reports.
@@ -145,11 +154,12 @@ function PP:GetPaladins()
 	for name in pairs(_G.PallyPower_Assignments) do
 		if not seen[name] then
 			seen[name] = true
-			local caps, known = self:CapabilitiesFor(name)
+			local caps, talents, known = self:CapabilitiesFor(name)
 			out[#out + 1] = {
 				name = name,
 				spec = self:InferSpec(name),
 				canCast = caps,
+				talents = talents,
 				capabilitiesKnown = known,
 			}
 		end

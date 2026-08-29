@@ -54,23 +54,49 @@ local function makeName(rng, used)
 	return "Filler" .. n
 end
 
---- Build a paladin capability table from a spec.
--- Mirrors what PallyPower would report: Kings and Sanctuary are talent gated,
--- everything else is trainable by any paladin.
-function T:PaladinCapabilities(spec)
+-- Roughly how often a real paladin of each spec has each talent, so generated
+-- raids exercise the awkward cases instead of only the tidy ones. The Kings
+-- rate in particular is deliberately not 100: the paladin who skipped Kings is
+-- exactly the case the solver has to survive.
+T.talentRates = {
+	kings = 95,
+	impWisdom   = { HOLY = 95, PROT = 10, RET = 10 },
+	impMight    = { HOLY = 15, PROT = 20, RET = 80 },
+	impSanctuary = { PROT = 90 },
+}
+
+--- Build a paladin's capabilities and improved-blessing talents from a spec.
+-- Mirrors the shape PallyPower reports: which blessings are in the spellbook,
+-- plus talent points for the three improved blessings it broadcasts.
+function T:PaladinCapabilities(spec, rng)
+	rng = rng or function(n) return math.random(n) end
+	local function chance(pct) return pct and rng(100) <= pct end
+
 	local caps = {
 		[B.WISDOM] = true,
 		[B.MIGHT] = true,
 		[B.SALVATION] = true,
 		[B.LIGHT] = true,
-		-- Kings sits deep enough in Protection that essentially every raiding
-		-- paladin has it regardless of spec.
-		[B.KINGS] = true,
 	}
+	if chance(self.talentRates.kings) then
+		caps[B.KINGS] = true
+	end
 	if spec == "PROT" then
 		caps[B.SANCTUARY] = true
 	end
-	return caps
+
+	local talents = {}
+	if chance(self.talentRates.impWisdom[spec]) then
+		talents[B.WISDOM] = B.IMPROVED_MAX_RANK[B.WISDOM]
+	end
+	if chance(self.talentRates.impMight[spec]) then
+		talents[B.MIGHT] = B.IMPROVED_MAX_RANK[B.MIGHT]
+	end
+	if caps[B.SANCTUARY] and chance(self.talentRates.impSanctuary[spec]) then
+		talents[B.SANCTUARY] = B.IMPROVED_MAX_RANK[B.SANCTUARY]
+	end
+
+	return caps, talents
 end
 
 --- Generate a raid.
@@ -110,10 +136,15 @@ function T:Generate(opts)
 				elseif profileKey == "PALADIN_TANK" then spec = "PROT"
 				else spec = "RET" end
 			end
+			local caps, talents = self:PaladinCapabilities(spec, rng)
 			paladins[#paladins + 1] = {
 				name = name,
 				spec = spec,
-				canCast = self:PaladinCapabilities(spec),
+				canCast = caps,
+				talents = talents,
+				-- A simulated raid stands in for one PallyPower has already
+				-- synced, so capabilities count as known.
+				capabilitiesKnown = true,
 			}
 		end
 		return m

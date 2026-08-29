@@ -18,6 +18,8 @@ load("Core/Blessings.lua")
 load("Core/Profiles.lua")
 load("Core/Solver.lua")
 load("Core/TestRaid.lua")
+-- Pure at load time: the adapter only touches WoW globals inside its functions.
+load("Integration/PallyPower.lua")
 
 -- Minimal test runner.
 local T = { passed = 0, failed = 0, failures = {} }

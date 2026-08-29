@@ -25,8 +25,25 @@ in the wrong one. Blessing of Light does nothing without a Holy paladin casting
 Holy Light on the target, so it is only ever offered when there is one.
 Sanctuary needs a Protection-talented paladin to exist at all.
 
-**Rule zero: a tank never keeps Salvation.** This is a hard constraint, not a
-preference, and the solver cannot produce a plan that violates it.
+**A tank never keeps Salvation.** This is a hard constraint, not a preference,
+and the solver cannot produce a plan that violates it. Rather than show tanks a
+rule they cannot edit, Salvation is simply absent from tank priorities.
+
+## Talents are read, never assumed
+
+Blessing of Kings is a talent. Almost every raiding paladin takes it — but
+"almost every" is the problem, and assigning Kings to the one paladin who
+skipped it leaves a whole class column unbuffed with nothing to say so. A
+paladin is credited with Kings or Sanctuary only once PallyPower has synced
+their spellbook; until then the plan says so rather than guessing.
+
+Improved blessings work the other way. A paladin specced into Improved Blessing
+of Wisdom casts a materially better one, so where there is a choice they should
+be the one to cast it. Deciding that is a matching problem across every paladin
+at once rather than a per-paladin pick: a paladin specced into two or three
+improved blessings can only cast one for a given class, and handing them their
+strongest in isolation can strand another paladin's talent entirely. The solver
+finds the assignment that puts the most talents to use overall.
 
 Because a greater blessing hits a whole class at once, the class-wide choice is
 made by whoever is in that column — which leaves outliers, usually a tank

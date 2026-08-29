@@ -79,9 +79,36 @@ B.MAX_CLASSES = 9
 
 -- Which blessings require a talent, and therefore may be absent from a given
 -- paladin's spellbook. Everything else is trainable by any paladin.
+--
+-- Kings matters more than its hit rate suggests. Nearly every raiding paladin
+-- takes it, but "nearly every" is not "every", and assigning Kings to a paladin
+-- who cannot cast it produces a class column that silently goes unbuffed. So it
+-- is never assumed -- only credited once a paladin's spellbook has been seen.
 B.TALENT_GATED = {
 	[B.KINGS] = true,      -- Protection tier 2
 	[B.SANCTUARY] = true,  -- Protection tier 3
+}
+
+-- Blessings that anyone with the class can cast. Used as the conservative
+-- fallback for a paladin we have not yet heard from.
+B.ALWAYS_TRAINABLE = {
+	[B.WISDOM] = true,
+	[B.MIGHT] = true,
+	[B.SALVATION] = true,
+	[B.LIGHT] = true,
+}
+
+-- Blessings with an "Improved" talent behind them, and the points at full
+-- rank. A paladin specced into one casts a materially stronger version, so
+-- where the choice exists they should be the one to cast it.
+--
+-- Only these three are listed because these are the three PallyPower reports
+-- talent data for (see its ScanSpells). Improved Blessing of Light exists in
+-- TBC but is not broadcast, so we cannot credit it.
+B.IMPROVED_MAX_RANK = {
+	[B.WISDOM] = 2,     -- Improved Blessing of Wisdom   (Holy)
+	[B.MIGHT] = 5,      -- Improved Blessing of Might    (Retribution)
+	[B.SANCTUARY] = 2,  -- Improved Blessing of Sanctuary (Protection)
 }
 
 function B:Name(id)

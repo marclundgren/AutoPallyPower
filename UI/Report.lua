@@ -77,7 +77,11 @@ function Report:Plan(result, opts)
 		add("")
 		add(C("head", ("Per-player overrides (%d)"):format(#result.overrides)))
 		for _, o in ipairs(result.overrides) do
-			local tag = o.mandatory and C("warn", "[rule zero]") or C("dim", "[upgrade]")
+			-- The reason says which kind of player this is, which is what makes
+			-- the line skimmable: "tank" and "caster" are read faster than
+			-- working out why Might became Wisdom.
+			local label = "[" .. (o.reason or "UPGRADE"):lower() .. "]"
+			local tag = o.mandatory and C("warn", label) or C("dim", label)
 			add(("  %-14s %s casts %s instead of %s  %s"):format(
 				o.target, o.paladin,
 				B:Name(o.blessing), B:Name(o.replaces), tag))
