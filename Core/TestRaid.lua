@@ -9,6 +9,19 @@ local B = APP.Blessings
 local P = APP.Profiles
 local T = APP.TestRaid
 
+-- A seed source that works in both worlds. WoW's Lua sandbox has no `os`
+-- table, so os.time() throws in game -- and the client swallows the error, so
+-- the symptom is a command that silently does nothing.
+local seedCounter = 0
+local function nowSeed()
+	if _G.time then return _G.time() end
+	if _G.GetTime then return math.floor(_G.GetTime() * 1000) end
+	-- Outside the game there is no clock worth consulting, so walk a counter:
+	-- successive calls still differ, and a test run stays reproducible.
+	seedCounter = seedCounter + 1
+	return 20260829 + seedCounter
+end
+
 T.defaults = {
 	raidSize = 25,
 	paladins = 2,
@@ -108,7 +121,7 @@ function T:Generate(opts)
 	for k, v in pairs(self.defaults) do cfg[k] = v end
 	for k, v in pairs(opts) do cfg[k] = v end
 
-	local seed = cfg.seed or os.time()
+	local seed = cfg.seed or nowSeed()
 	math.randomseed(seed)
 	-- Lua 5.1's first few draws after a seed are poorly distributed on some
 	-- platforms; burn a handful.

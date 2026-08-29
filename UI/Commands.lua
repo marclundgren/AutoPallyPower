@@ -57,6 +57,10 @@ end
 
 local handlers = {}
 
+handlers.ui = function()
+	if APP.MainFrame then APP.MainFrame:Toggle() end
+end
+
 handlers.plan = function()
 	local result, err = Commands:Solve()
 	if not result then return out(err) end
@@ -155,6 +159,9 @@ handlers.tankmode = function(args)
 		return out(("Tank mode is '%s'. Use /app tankmode threat|survival."):format(db.tankPriority))
 	end
 	db.tankPriority = mode
+	if APP.MainFrame and APP.MainFrame.frame and APP.MainFrame.frame:IsShown() then
+		APP.MainFrame:RefreshPriorities()
+	end
 	out(("Tank mode set to '%s'. %s"):format(mode,
 		mode == "threat" and "Tanks favour Might/Sanctuary for threat."
 		or "Tanks favour Blessing of Light for survivability (needs a holy paladin)."))
@@ -169,6 +176,9 @@ handlers.grouping = function(args)
 	end
 	db.railGrouping = mode
 	out(("Priority list now groups by %s."):format(mode))
+	if APP.MainFrame and APP.MainFrame.frame and APP.MainFrame.frame:IsShown() then
+		APP.MainFrame:RefreshPriorities()
+	end
 
 	for _, group in ipairs(P:GroupedList(mode, db.profiles)) do
 		local names = {}
@@ -239,6 +249,7 @@ end
 
 handlers.help = function()
 	out("AutoPallyPower commands:")
+	out("  /app                         open the window")
 	out("  /app plan                    solve the current raid and show the plan")
 	out("  /app report                  show what each player would end up with")
 	out("  /app preview                 show what applying would change")
@@ -261,7 +272,9 @@ function Commands:Handle(input)
 	for word in input:gmatch("%S+") do parts[#parts + 1] = word end
 
 	local cmd = table.remove(parts, 1)
-	if not cmd or cmd == "" then cmd = "plan" end
+	-- Bare /app opens the window; the text commands stay for when you want
+	-- output you can paste somewhere.
+	if not cmd or cmd == "" then cmd = "ui" end
 
 	local handler = handlers[cmd:lower()]
 	if not handler then

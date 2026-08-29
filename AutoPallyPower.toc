@@ -17,5 +17,6 @@ Core\Roster.lua
 Core\Config.lua
 Integration\PallyPower.lua
 UI\Report.lua
+UI\MainFrame.lua
 UI\Minimap.lua
 UI\Commands.lua
