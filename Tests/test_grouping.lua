@@ -100,12 +100,25 @@ do
 end
 
 --------------------------------------------------------------------------
-print("== an unknown mode falls back to class rather than erroring ==")
+print("== an unknown mode falls back to the default rather than erroring ==")
 do
+	-- The fallback must match the shipped default, or a caller that forgets to
+	-- pass a mode would silently show a different grouping than the settings say.
 	local groups = P:GroupedList("nonsense")
-	T.eq("falls back to class grouping", groups[1].key, "WARRIOR")
+	T.eq("falls back to role grouping", groups[1].key, "TANK")
 	local nilMode = P:GroupedList(nil)
-	T.eq("nil falls back too", nilMode[1].key, "WARRIOR")
+	T.eq("nil falls back too", nilMode[1].key, "TANK")
+	T.eq("class is still reachable explicitly", P:GroupedList("class")[1].key, "WARRIOR")
+end
+
+--------------------------------------------------------------------------
+print("== the shipped default is role grouping ==")
+do
+	local APPConfig = APP.Config
+	T.check("Config exposes a default", APPConfig ~= nil)
+	if APPConfig then
+		T.eq("default railGrouping is role", APPConfig:Defaults().railGrouping, "role")
+	end
 end
 
 T.report("grouping")

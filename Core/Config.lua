@@ -27,7 +27,9 @@ function Config:Defaults()
 		playerProfileOverrides = {},
 		tankPriority = "threat",
 		-- How the priority list groups its profiles: "class" or "role".
-		railGrouping = "class",
+		-- Role is the default: the priorities are written per role, so the
+		-- list reads the way the policy was actually decided.
+		railGrouping = "role",
 		overridePenalty = S.DEFAULT_OVERRIDE_PENALTY,
 		weights = copy(S.DEFAULT_WEIGHTS),
 		minimap = { angle = 210, hide = false },

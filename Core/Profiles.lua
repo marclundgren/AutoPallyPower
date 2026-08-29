@@ -245,11 +245,11 @@ end
 -- Grouping for the priority list UI
 --------------------------------------------------------------------------
 
--- Two ways to organise twenty profiles. Grouping by class matches the raid
--- grid and is how you think when one person's buffs look wrong; grouping by
--- role matches how the priorities are actually written, since every healer
--- shares a list. Which is better in practice is an open question, so it is a
--- setting rather than a decision.
+-- Two ways to organise twenty profiles. Grouping by role matches how the
+-- priorities are actually written -- every healer shares a list -- so it is
+-- the default and the one to use when editing policy. Grouping by class
+-- mirrors the raid grid instead, which is what you want when one particular
+-- player's buffs look wrong. Both are useful, so it stays a setting.
 P.CLASS_ORDER = { "WARRIOR", "ROGUE", "PRIEST", "DRUID", "PALADIN", "HUNTER", "MAGE", "WARLOCK", "SHAMAN" }
 
 P.CLASS_LABELS = {
@@ -282,7 +282,9 @@ end
 -- @return array of { key, label, items = { { key, profile, label, tank } } }
 function P:GroupedList(mode, profiles)
 	profiles = profiles or self.defaults
-	mode = (mode == "role") and "role" or "class"
+	-- Role is the fallback as well as the saved default, so a caller that
+	-- forgets to pass a mode gets the same list the settings would have given.
+	mode = (mode == "class") and "class" or "role"
 
 	local classRank = {}
 	for i, class in ipairs(self.CLASS_ORDER) do classRank[class] = i end
