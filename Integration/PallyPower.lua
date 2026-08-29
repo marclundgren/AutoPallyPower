@@ -27,6 +27,12 @@ local PP = APP.PP
 
 PP.PREFIX = "PLPWR"
 
+local function stripRealm(name)
+	if not name then return nil end
+	local short = name:match("^([^-]+)")
+	return short or name
+end
+
 -- name -> { [blessingID] = { rank = n, talent = n } }
 PP.observed = {}
 
@@ -48,12 +54,6 @@ end
 --------------------------------------------------------------------------
 -- Listening to PallyPower's sync
 --------------------------------------------------------------------------
-
-local function stripRealm(name)
-	if not name then return nil end
-	local short = name:match("^([^-]+)")
-	return short or name
-end
 
 --- Parse a PallyPower SELF payload into per-blessing rank/talent data.
 -- Format: six hex pairs (rank, talent) or "nn" when the blessing is unknown,
@@ -84,6 +84,87 @@ function PP:OnAddonMessage(prefix, message, _, sender)
 	if message:sub(1, 4) == "SELF" then
 		self:ParseSelf(sender, message)
 	end
+end
+
+--------------------------------------------------------------------------
+-- Scanning our own paladin
+--------------------------------------------------------------------------
+
+-- Rank-1 spell IDs, indexed to match our blessing IDs. Used only to resolve
+-- the localised spell name and icon; whether the spell is actually known is
+-- answered by looking that name up in the player's spellbook.
+PP.SELF_SPELL_IDS = {
+	[B.WISDOM] = 19742,
+	[B.MIGHT] = 19740,
+	[B.KINGS] = 20217,
+	[B.SALVATION] = 1038,
+	[B.LIGHT] = 19977,
+	[B.SANCTUARY] = 20911,
+}
+
+-- Paladin talent tab order in TBC.
+PP.TALENT_TABS = { [1] = "HOLY", [2] = "PROT", [3] = "RET" }
+
+PP.selfName = nil
+PP.selfSpec = nil
+
+--- Read the player's own blessings and improved-blessing talents.
+--
+-- Waiting for a PallyPower broadcast to learn about ourselves is pointless and
+-- actively unhelpful: PallyPower only broadcasts while in a group, so a paladin
+-- sitting alone in a city has no idea what they can cast. The client knows
+-- perfectly well, so we ask it directly.
+--
+-- Improved-blessing talents are matched by icon rather than by name, because
+-- the talent shares its blessing's texture and a name match would break on any
+-- non-English client.
+function PP:ScanSelf()
+	if not _G.UnitClass then return nil end
+	local _, class = _G.UnitClass("player")
+	if class ~= "PALADIN" then
+		self.selfName, self.selfSpec = nil, nil
+		return nil
+	end
+
+	local name = _G.UnitName and _G.UnitName("player")
+	if not name then return nil end
+	name = stripRealm(name)
+
+	local info, textureOf = {}, {}
+	for blessing, spellID in pairs(self.SELF_SPELL_IDS) do
+		local spellName, _, texture = _G.GetSpellInfo(spellID)
+		-- A name lookup only resolves for spells actually in the spellbook,
+		-- which is what makes this a real check rather than a guess.
+		if spellName and _G.GetSpellInfo(spellName) then
+			info[blessing] = { rank = 1, talent = 0 }
+			if texture then textureOf[texture] = blessing end
+		end
+	end
+
+	if _G.GetNumTalentTabs and _G.GetTalentInfo then
+		local best, bestPoints = nil, -1
+		for tab = 1, (_G.GetNumTalentTabs() or 0) do
+			if _G.GetTalentTabInfo then
+				local points = select(3, _G.GetTalentTabInfo(tab))
+				if type(points) == "number" and points > bestPoints then
+					bestPoints, best = points, tab
+				end
+			end
+			for index = 1, (_G.GetNumTalents(tab) or 0) do
+				local talentName, texture, _, _, rank = _G.GetTalentInfo(tab, index)
+				local blessing = texture and textureOf[texture]
+				-- Only the three blessings that actually have an Improved talent.
+				if blessing and B.IMPROVED_MAX_RANK[blessing] and type(rank) == "number" and rank > 0 then
+					info[blessing].talent = rank
+				end
+			end
+		end
+		if best then self.selfSpec = self.TALENT_TABS[best] end
+	end
+
+	self.selfName = name
+	self.observed[name] = info
+	return info
 end
 
 --------------------------------------------------------------------------
@@ -130,6 +211,12 @@ end
 -- Not perfect, but it is free, it needs no inspection, and it is right far
 -- more often than assuming.
 function PP:InferSpec(name)
+	-- For ourselves we counted talent points directly, which beats guessing
+	-- from which improved blessings happen to be trained.
+	if name and name == self.selfName and self.selfSpec then
+		return self.selfSpec
+	end
+
 	local info = self.observed[name]
 	if not info then return "UNKNOWN" end
 

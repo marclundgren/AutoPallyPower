@@ -34,6 +34,8 @@ end
 --- Solve whatever raid is current (live, or simulated in test mode).
 function Commands:Solve()
 	local db = APP.db
+	-- Cheap, and it means our own talents are never the stale part of a plan.
+	PP:ScanSelf()
 	local raid = R:Current(db.playerProfileOverrides)
 
 	if raid.empty then
@@ -205,21 +207,33 @@ end
 
 handlers.status = function()
 	local db = APP.db
+	PP:ScanSelf()
 	out(("PallyPower detected: %s"):format(PP:IsAvailable() and "yes" or "no"))
 	out(("Test mode: %s"):format(R:IsSimulated() and "on" or "off"))
 	out(("Tank mode: %s"):format(db.tankPriority))
 	out(("Priority grouping: %s"):format(db.railGrouping))
 	out(("Override threshold: %d"):format(db.overridePenalty))
 	local pallys = PP:GetPaladins()
+	local inGroup = (_G.GetNumGroupMembers and _G.GetNumGroupMembers() or 0) > 0
 	out(("Paladins known to PallyPower: %d"):format(#pallys))
+	if not inGroup then
+		-- PallyPower only broadcasts while grouped, so out of a group this list
+		-- is whatever it remembered from previous raids, not who is with you.
+		out("|cff9d9d9d  (remembered from previous raids -- PallyPower only syncs while grouped)|r")
+	end
 	for _, p in ipairs(pallys) do
 		local caps = {}
 		for _, b in ipairs(B.ALL) do
 			if p.canCast[b] then caps[#caps + 1] = B:Short(b) end
 		end
+		local note = ""
+		if p.name == PP.selfName then
+			note = "  |cff1eff00(you, read from your spellbook)|r"
+		elseif not p.capabilitiesKnown then
+			note = "  |cff9d9d9d(assumed -- not synced yet)|r"
+		end
 		out(("  %s  spec=%s  can cast: %s%s"):format(
-			p.name, p.spec, table.concat(caps, " "),
-			p.capabilitiesKnown and "" or "  |cff9d9d9d(assumed)|r"))
+			p.name, p.spec, table.concat(caps, " "), note))
 	end
 end
 
@@ -264,6 +278,9 @@ end
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("CHAT_MSG_ADDON")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("SPELLS_CHANGED")
+frame:RegisterEvent("CHARACTER_POINTS_CHANGED")
 
 frame:SetScript("OnEvent", function(_, event, arg1, ...)
 	if event == "ADDON_LOADED" and arg1 == ADDON then
@@ -292,5 +309,9 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
 	elseif event == "CHAT_MSG_ADDON" then
 		local prefix, message, channel, sender = arg1, ...
 		PP:OnAddonMessage(prefix, message, channel, sender)
+
+	else
+		-- Talents and spellbook can both change under us; rescanning is cheap.
+		PP:ScanSelf()
 	end
 end)

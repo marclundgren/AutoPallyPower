@@ -19,7 +19,7 @@ Config.copy = copy
 
 function Config:Defaults()
 	return {
-		version = 1,
+		version = 2,
 		-- The user's editable copy of the priority lists. Shipped defaults stay in
 		-- APP.Profiles.defaults so "reset" always has something to reset to.
 		profiles = copy(P.defaults),
@@ -61,6 +61,14 @@ function Config:Load()
 		for k, v in pairs(defaults) do
 			if db[k] == nil then db[k] = v end
 		end
+		-- Migrations. Saved settings survive a default change, which is right
+		-- for anything the user chose -- but nobody ever chose class grouping,
+		-- it was simply the old default, so move those copies across.
+		if (db.version or 1) < 2 then
+			db.railGrouping = "role"
+			db.version = 2
+		end
+
 		if type(db.profiles) ~= "table" then db.profiles = copy(P.defaults) end
 		-- Any profile we ship that the saved copy has never seen.
 		for key, profile in pairs(P.defaults) do
