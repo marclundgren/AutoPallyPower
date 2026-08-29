@@ -60,11 +60,52 @@ Whether a tank's second blessing should be Might (threat) or Light (survival)
 is a real judgement call that changes per guild and per fight, so it is a
 setting rather than a baked-in answer. `threat` is the default.
 
-## Development
+## Installing
 
-The engine is pure Lua with no WoW API calls, so it runs under `lua5.1` —
-the same version the game ships.
+Copy or clone this repository into your AddOns folder. The folder **must** be
+named exactly `AutoPallyPower` to match `AutoPallyPower.toc`, or WoW will not
+load it.
 
+## Development setup
+
+Keep the repo wherever you work and symlink it into AddOns, so `git pull`
+updates the addon the game actually loads and you never copy files by hand.
+
+**macOS / Linux**
+
+```sh
+git clone https://github.com/marclundgren/AutoPallyPower.git ~/Dev/AutoPallyPower
+
+# Adjust for your install: _classic_ for TBC/Wrath Classic,
+# _classic_era_ for Classic Era, _retail_ for retail.
+WOW_ADDONS="/Applications/World of Warcraft/_classic_/Interface/AddOns"
+
+ln -s ~/Dev/AutoPallyPower "$WOW_ADDONS/AutoPallyPower"
+ls -l "$WOW_ADDONS/AutoPallyPower"   # should show the arrow to ~/Dev
 ```
+
+**Windows** — from a Command Prompt. A junction (`/J`) is used rather than a
+symlink (`/D`) because it does not require an elevated prompt.
+
+```bat
+git clone https://github.com/marclundgren/AutoPallyPower.git %USERPROFILE%\Dev\AutoPallyPower
+
+mklink /J "C:\Program Files (x86)\World of Warcraft\_classic_\Interface\AddOns\AutoPallyPower" "%USERPROFILE%\Dev\AutoPallyPower"
+```
+
+The link target is the repository root, because that is where the `.toc` lives.
+
+After pulling changes, `/reload` in game picks them up. New or removed files in
+the `.toc` need a full client restart, since WoW only reads the `.toc` at
+launch.
+
+## Tests
+
+The engine is pure Lua with no WoW API calls, so it runs under `lua5.1` — the
+same version the game ships.
+
+```sh
 ./Tests/run_all.sh
 ```
+
+No WoW client, and no group, required.
