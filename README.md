@@ -15,7 +15,7 @@ It does not replace, fork, or patch PallyPower. Install both.
 
 ## How it decides
 
-Every class/spec has an ordered wishlist — "if I could have N blessings, these
+Every class/spec has an ordered blessing priority — "if I could have N blessings, these
 are the N I want." A Fury Warrior wants Salvation, then Might, then Kings. An
 Elemental Shaman wants Salvation, then Kings, then Wisdom. These ship as
 editable defaults, not hard-coded rules.

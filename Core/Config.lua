@@ -20,7 +20,7 @@ Config.copy = copy
 function Config:Defaults()
 	return {
 		version = 1,
-		-- The user's editable copy of the wishlists. Shipped defaults stay in
+		-- The user's editable copy of the priority lists. Shipped defaults stay in
 		-- APP.Profiles.defaults so "reset" always has something to reset to.
 		profiles = copy(P.defaults),
 		-- name -> profile key, for players whose spec we cannot detect.
@@ -37,8 +37,10 @@ function Config:Defaults()
 			healers = 5,
 			seed = nil,
 		},
-		-- Named mutations layered on top of the defaults, for the one fight
-		-- that wants something different.
+		-- Named mutations layered on top of the defaults, for the night that
+		-- wants something different. Names are free-form and selection is
+		-- always manual -- deliberately not auto-attached to a zone or boss,
+		-- since a one-off is not always named after an encounter.
 		presets = {},
 		activePreset = nil,
 	}

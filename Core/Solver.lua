@@ -42,7 +42,7 @@ local B = APP.Blessings
 local P = APP.Profiles
 local S = APP.Solver
 
--- Value of a blessing sitting at rank N of a member's wishlist. Steeply
+-- Value of a blessing sitting at rank N of a member's priority list. Steeply
 -- diminishing: the difference between a member's 1st and 2nd choice matters
 -- far more than between their 4th and 5th.
 S.DEFAULT_WEIGHTS = { 100, 60, 35, 18, 8, 3 }
@@ -69,7 +69,7 @@ end
 --------------------------------------------------------------------------
 
 -- What the raid can actually supply, which gates the conditional entries in
--- the wishlists.
+-- the priority lists.
 function S:BuildContext(paladins, config)
 	local holy, prot = false, false
 	for i = 1, #paladins do
@@ -85,10 +85,10 @@ function S:BuildContext(paladins, config)
 end
 
 --------------------------------------------------------------------------
--- Member wishlists
+-- Member priorities
 --------------------------------------------------------------------------
 
--- Attach a rank lookup (blessing id -> position in wishlist) to each member.
+-- Attach a rank lookup (blessing id -> position in the priority list) to each member.
 function S:PrepareMembers(members, ctx, config)
 	local prepared = {}
 	for i = 1, #members do
@@ -109,7 +109,9 @@ function S:PrepareMembers(members, ctx, config)
 			tank = m.tank and true or false,
 			profileKey = key,
 			profileLabel = profile and profile.label or key,
-			wishlist = list,
+			-- The profile's priority list resolved against tonight's raid:
+			-- conditional entries either kept or dropped, flattened to ids.
+			priority = list,
 			rank = rank,
 		}
 	end

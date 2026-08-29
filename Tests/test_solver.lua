@@ -168,10 +168,10 @@ do
 end
 
 --------------------------------------------------------------------------
-print("== wishlists are honoured when there is room ==")
+print("== priority lists are honoured when there is room ==")
 do
 	-- Three paladins means each class column gets three blessings, which is
-	-- exactly the depth of most wishlists.
+	-- exactly the depth of most priority lists.
 	local raid = {
 		paladins = { pally("Holyone", "HOLY"), pally("Rettwo", "RET"), pally("Retthree", "RET") },
 		members = {

@@ -1,6 +1,6 @@
--- Per class+spec blessing wishlists.
+-- Per class+spec blessing priorities.
 --
--- Each profile is an ordered list: "if I could have N blessings, these are the
+-- Each profile is an ordered priority list: "if I could have N blessings, these are the
 -- N I want, in this order." Entries may carry a `requires` condition that is
 -- evaluated against live raid state, because some blessings are worthless in
 -- the wrong raid -- Blessing of Light does nothing unless a Holy paladin is
