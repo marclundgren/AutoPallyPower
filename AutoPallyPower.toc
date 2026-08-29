@@ -1,0 +1,21 @@
+## Interface: 20506
+## Title: AutoPallyPower
+## Notes: Composition-aware blessing assignment for PallyPower.
+## Author: marclundgren
+## Version: 0.1.0
+## DefaultState: enabled
+## Dependencies: PallyPower
+## SavedVariables: AutoPallyPowerDB
+## X-Category: Paladin
+
+Core\Init.lua
+Core\Blessings.lua
+Core\Profiles.lua
+Core\Solver.lua
+Core\TestRaid.lua
+Core\Roster.lua
+Core\Config.lua
+Integration\PallyPower.lua
+UI\Report.lua
+UI\Minimap.lua
+UI\Commands.lua
