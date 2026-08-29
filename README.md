@@ -64,6 +64,7 @@ Given the same raid, it always produces the same plan.
 /app test 25 2 2 5      simulate a 25-man: 2 paladins, 2 tanks, 5 healers
 /app test off   back to the live raid
 /app tankmode threat|survival
+/app grouping class|role         how the priority list is grouped
 /app override <player> <PROFILE|clear>
 /app status     what the addon currently sees
 ```

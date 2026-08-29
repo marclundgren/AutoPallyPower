@@ -26,6 +26,8 @@ function Config:Defaults()
 		-- name -> profile key, for players whose spec we cannot detect.
 		playerProfileOverrides = {},
 		tankPriority = "threat",
+		-- How the priority list groups its profiles: "class" or "role".
+		railGrouping = "class",
 		overridePenalty = S.DEFAULT_OVERRIDE_PENALTY,
 		weights = copy(S.DEFAULT_WEIGHTS),
 		minimap = { angle = 210, hide = false },

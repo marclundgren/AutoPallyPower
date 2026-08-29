@@ -240,3 +240,94 @@ function P:ForMember(member, overrides)
 	end
 	return self.classFallback[member.class]
 end
+
+--------------------------------------------------------------------------
+-- Grouping for the priority list UI
+--------------------------------------------------------------------------
+
+-- Two ways to organise twenty profiles. Grouping by class matches the raid
+-- grid and is how you think when one person's buffs look wrong; grouping by
+-- role matches how the priorities are actually written, since every healer
+-- shares a list. Which is better in practice is an open question, so it is a
+-- setting rather than a decision.
+P.CLASS_ORDER = { "WARRIOR", "ROGUE", "PRIEST", "DRUID", "PALADIN", "HUNTER", "MAGE", "WARLOCK", "SHAMAN" }
+
+P.CLASS_LABELS = {
+	WARRIOR = "Warrior", ROGUE = "Rogue", PRIEST = "Priest", DRUID = "Druid",
+	PALADIN = "Paladin", HUNTER = "Hunter", MAGE = "Mage", WARLOCK = "Warlock",
+	SHAMAN = "Shaman",
+}
+
+-- Tanks first: they carry the hard constraint and get edited most.
+P.ROLE_ORDER = { "TANK", "HEALER", "MELEE", "CASTER" }
+
+P.ROLE_LABELS = {
+	TANK = "Tanks", HEALER = "Healers", MELEE = "Physical DPS", CASTER = "Caster DPS",
+}
+
+--- Strip the class prefix from a profile label so it does not repeat the
+--- group heading it already sits under.
+local function shortLabel(profile, mode)
+	local label = profile.label or "?"
+	if mode ~= "class" then return label end
+	local classLabel = P.CLASS_LABELS[profile.class]
+	if not classLabel then return label end
+	local trimmed = label:match("^" .. classLabel .. "%s*%-%s*(.+)$")
+	return trimmed or label
+end
+
+--- Ordered, grouped profile list for the priority rail.
+-- @param mode "class" or "role"
+-- @param profiles profile set to list (defaults to the shipped ones)
+-- @return array of { key, label, items = { { key, profile, label, tank } } }
+function P:GroupedList(mode, profiles)
+	profiles = profiles or self.defaults
+	mode = (mode == "role") and "role" or "class"
+
+	local classRank = {}
+	for i, class in ipairs(self.CLASS_ORDER) do classRank[class] = i end
+
+	local buckets, order = {}, {}
+	local groupKeys = (mode == "class") and self.CLASS_ORDER or self.ROLE_ORDER
+	for _, key in ipairs(groupKeys) do
+		buckets[key] = {}
+		order[#order + 1] = key
+	end
+
+	for key, profile in pairs(profiles) do
+		-- setmetatable-backed preset sets can carry inherited entries; only
+		-- list ones that look like real profiles.
+		if type(profile) == "table" and profile.class then
+			local bucket = (mode == "class") and profile.class or profile.role
+			if bucket and buckets[bucket] then
+				table.insert(buckets[bucket], {
+					key = key,
+					profile = profile,
+					label = shortLabel(profile, mode),
+					tank = profile.tank and true or false,
+				})
+			end
+		end
+	end
+
+	local out = {}
+	for _, key in ipairs(order) do
+		local items = buckets[key]
+		if #items > 0 then
+			-- Within a group: class order first, then label, so the list is
+			-- stable no matter how pairs() happened to iterate.
+			table.sort(items, function(a, b)
+				local ra = classRank[a.profile.class] or 99
+				local rb = classRank[b.profile.class] or 99
+				if ra ~= rb then return ra < rb end
+				return a.label < b.label
+			end)
+			out[#out + 1] = {
+				key = key,
+				label = (mode == "class") and self.CLASS_LABELS[key] or self.ROLE_LABELS[key],
+				items = items,
+			}
+		end
+	end
+	return out
+end
