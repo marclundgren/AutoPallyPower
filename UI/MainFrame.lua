@@ -486,6 +486,12 @@ function UI:BuildPlan()
 	pane.summary:SetPoint("TOPLEFT", pane, "TOPLEFT", 10, -8)
 	pane.summary:SetJustifyH("LEFT")
 
+	-- Sits between the summary and the plan: knowing half the raid will not
+	-- receive this is more urgent than any line of the plan itself.
+	pane.warn = label(pane, "", "GameFontNormalSmall")
+	pane.warn:SetPoint("TOPLEFT", pane.summary, "BOTTOMLEFT", 0, -4)
+	pane.warn:SetJustifyH("LEFT")
+
 	pane.notice = label(pane, "", "GameFontDisableLarge")
 	pane.notice:SetPoint("CENTER", pane, "CENTER", 0, 20)
 	pane.notice:SetJustifyH("CENTER")
@@ -496,8 +502,8 @@ function UI:BuildPlan()
 	pane.goTest = button(pane, "Open Test Mode", 130, 22, function() UI:SelectTab(3) end)
 	pane.goTest:SetPoint("TOP", pane.hint, "BOTTOM", 0, -10)
 
-	local scroll, content = scrollList(pane, body:GetWidth() - 40, body:GetHeight() - 74)
-	scroll:SetPoint("TOPLEFT", pane, "TOPLEFT", 10, -30)
+	local scroll, content = scrollList(pane, body:GetWidth() - 40, body:GetHeight() - 92)
+	scroll:SetPoint("TOPLEFT", pane, "TOPLEFT", 10, -48)
 	pane.content = content
 
 	pane.preview = button(pane, "Preview changes", 120, 22, function()
@@ -526,6 +532,7 @@ function UI:RefreshPlan()
 		pane.notice:SetText("Not in a group")
 		pane.hint:SetText("The plan needs a roster to solve against.\nPriorities and Test Mode work anywhere.")
 		pane.notice:Show(); pane.hint:Show(); pane.goTest:Show()
+		pane.warn:SetText("")
 		setEnabled(pane.preview, false)
 		setEnabled(pane.apply, false)
 		return
@@ -550,6 +557,21 @@ function UI:RefreshPlan()
 	-- Applying a simulated plan would write a fictional raid into PallyPower.
 	setEnabled(pane.preview, not simulated)
 	setEnabled(pane.apply, not simulated)
+
+	-- Say up front whose assignments will not land, and why.
+	local blocked = {}
+	if not simulated then
+		for _, p in ipairs(result.paladins) do
+			local ok, _, why = PP:ControlStatus(p.name)
+			if not ok then blocked[#blocked + 1] = ("%s (%s)"):format(p.name, why) end
+		end
+	end
+	if #blocked > 0 then
+		pane.warn:SetText(("|cffff2020Cannot set %d of %d paladins:|r %s"):format(
+			#blocked, #result.paladins, table.concat(blocked, ", ")))
+	else
+		pane.warn:SetText("")
+	end
 
 	local lines = {}
 	for _, line in ipairs(Report:Plan(result)) do lines[#lines + 1] = line end

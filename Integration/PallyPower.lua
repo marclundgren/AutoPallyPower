@@ -36,6 +36,13 @@ end
 -- name -> { [blessingID] = { rank = n, talent = n } }
 PP.observed = {}
 
+-- Anyone we have ever received a PLPWR message from. Silence is how we tell
+-- that a paladin has no PallyPower at all.
+PP.heard = {}
+
+-- name -> true/false, from their FREEASSIGN broadcast.
+PP.freeAssign = {}
+
 --------------------------------------------------------------------------
 -- Availability
 --------------------------------------------------------------------------
@@ -81,9 +88,97 @@ function PP:OnAddonMessage(prefix, message, _, sender)
 	if prefix ~= self.PREFIX then return end
 	sender = stripRealm(sender)
 	if not sender then return end
+
+	-- Any message at all proves they are running PallyPower.
+	self.heard[sender] = true
+
 	if message:sub(1, 4) == "SELF" then
 		self:ParseSelf(sender, message)
 	end
+
+	-- Sent alongside SELF whenever they sync. Whether a paladin accepts
+	-- assignments from a non-leader turns entirely on this.
+	if message:find("FREEASSIGN YES", 1, true) then
+		self.freeAssign[sender] = true
+	elseif message:find("FREEASSIGN NO", 1, true) then
+		self.freeAssign[sender] = false
+	end
+end
+
+--------------------------------------------------------------------------
+-- Who we can actually set assignments for
+--------------------------------------------------------------------------
+
+--- Has this paladin ever spoken on PallyPower's channel?
+-- Our own character counts once scanned, since we obviously have it loaded.
+function PP:HasPallyPower(name)
+	if name and name == self.selfName then return true end
+    return self.heard[name] == true
+end
+
+--- Does this client carry enough authority for other paladins to accept what
+--- we send them?
+--
+-- Mirrors PallyPower's own rule from the sending side. Two things are easy to
+-- get wrong here. In a party there is no assistant -- PallyPower credits only
+-- the party leader -- so being "in charge" of a party you did not make counts
+-- for nothing. And inside an instance-finder group it credits nobody at all,
+-- so free assignment is the only route.
+function PP:HaveAuthority()
+	local instanceGroup = _G.LE_PARTY_CATEGORY_INSTANCE
+		and _G.IsInGroup and _G.IsInGroup(_G.LE_PARTY_CATEGORY_INSTANCE)
+		and _G.IsInInstance and _G.IsInInstance()
+	if instanceGroup then return false end
+
+	if _G.IsInRaid and _G.IsInRaid() then
+		return (_G.UnitIsGroupLeader and _G.UnitIsGroupLeader("player"))
+			or (_G.UnitIsGroupAssistant and _G.UnitIsGroupAssistant("player")) or false
+	end
+	return (_G.UnitIsGroupLeader and _G.UnitIsGroupLeader("player")) or false
+end
+
+--- Will this paladin's client accept an assignment from us?
+function PP:CanControl(name)
+	if name and name == self.selfName then return true end
+	if self:HaveAuthority() then return true end
+	return self.freeAssign[name] == true
+end
+
+--- Why a paladin cannot be set, phrased as something the user can act on.
+-- @return controllable, reasonKey, human-readable explanation
+function PP:ControlStatus(name)
+	if name and name == self.selfName then
+		return true, "SELF", "you"
+	end
+	if not self:HasPallyPower(name) then
+		return false, "NO_PALLYPOWER",
+			"has not synced -- PallyPower may not be installed"
+	end
+	if self:HaveAuthority() then
+		return true, "AUTHORITY", "you are leader or assistant"
+	end
+	if self.freeAssign[name] == true then
+		return true, "FREE_ASSIGN", "free assignment is on"
+	end
+	if self.freeAssign[name] == false then
+		return false, "FREE_ASSIGN_OFF",
+			"free assignment is off and you are not leader or assistant"
+	end
+	return false, "UNKNOWN", "free assignment state not yet known"
+end
+
+--- Control status for a list of paladin names, worst first.
+function PP:ControlReport(names)
+	local out = {}
+	for _, name in ipairs(names or {}) do
+		local ok, reason, why = self:ControlStatus(name)
+		out[#out + 1] = { name = name, canControl = ok, reason = reason, why = why }
+	end
+	table.sort(out, function(a, b)
+		if a.canControl ~= b.canControl then return b.canControl end
+		return a.name < b.name
+	end)
+	return out
 end
 
 --------------------------------------------------------------------------
@@ -242,12 +337,18 @@ function PP:GetPaladins()
 		if not seen[name] then
 			seen[name] = true
 			local caps, talents, known = self:CapabilitiesFor(name)
+			local controllable, reason, why = self:ControlStatus(name)
 			out[#out + 1] = {
 				name = name,
 				spec = self:InferSpec(name),
 				canCast = caps,
 				talents = talents,
 				capabilitiesKnown = known,
+				hasPallyPower = self:HasPallyPower(name),
+				freeAssign = self.freeAssign[name],
+				canControl = controllable,
+				controlReason = reason,
+				controlWhy = why,
 			}
 		end
 	end
@@ -286,15 +387,6 @@ end
 --------------------------------------------------------------------------
 -- Writing assignments
 --------------------------------------------------------------------------
-
---- Can we legitimately set assignments for paladins other than ourselves?
--- Mirrors PallyPower's own CanControl rule, so we refuse rather than emit
--- broadcasts every other client will silently discard.
-function PP:CanControlOthers()
-	if _G.UnitIsGroupLeader and _G.UnitIsGroupLeader("player") then return true end
-	if _G.UnitIsGroupAssistant and _G.UnitIsGroupAssistant("player") then return true end
-	return false
-end
 
 --- Compute the difference between a solved plan and what is live right now.
 function PP:Diff(result)
@@ -346,8 +438,22 @@ function PP:Apply(result, opts)
 	local ok, err = self:Assert()
 	if not ok then return false, err end
 
-	local stats = { rows = 0, cells = 0, overrides = 0, cleared = 0 }
+	local stats = { rows = 0, cells = 0, overrides = 0, cleared = 0, blocked = {} }
 	local diff = self:Diff(result)
+
+	-- Work out up front whose assignments will actually be accepted. Writing a
+	-- row we cannot broadcast would leave our own PallyPower grid showing a
+	-- plan no other client has, which is worse than not writing it: the raid
+	-- would look assigned while half of it was not.
+	local blocked = {}
+	for name in pairs(result.grid) do
+		local ok, reason, why = self:ControlStatus(name)
+		if not ok then
+			blocked[name] = true
+			stats.blocked[#stats.blocked + 1] = { name = name, reason = reason, why = why }
+		end
+	end
+	table.sort(stats.blocked, function(a, b) return a.name < b.name end)
 
 	if opts.dryRun then
 		return true, "dry run", {
@@ -355,6 +461,7 @@ function PP:Apply(result, opts)
 			cells = #diff.grid,
 			overrides = #diff.addedOverrides,
 			cleared = #diff.removedOverrides,
+			blocked = stats.blocked,
 			diff = diff,
 		}
 	end
@@ -369,6 +476,7 @@ function PP:Apply(result, opts)
 	-- Greater blessings: write the row, then broadcast it in one PASSIGN
 	-- message rather than nine ASSIGNs.
 	for name, row in pairs(result.grid) do
+		if not blocked[name] then
 		assignments[name] = assignments[name] or {}
 		local encoded = {}
 		for c = 1, B.MAX_CLASSES do
@@ -381,6 +489,7 @@ function PP:Apply(result, opts)
 		end
 		stats.rows = stats.rows + 1
 		_G.PallyPower:SendMessage("PASSIGN " .. name .. "@" .. table.concat(encoded))
+		end
 	end
 
 	-- Clear overrides the new plan no longer wants, so a stale Blessing of
@@ -405,12 +514,14 @@ function PP:Apply(result, opts)
 	end
 
 	for _, o in ipairs(result.overrides) do
+		if not blocked[o.paladin] then
 		normals[o.paladin] = normals[o.paladin] or {}
 		normals[o.paladin][o.classID] = normals[o.paladin][o.classID] or {}
 		normals[o.paladin][o.classID][o.target] = o.blessing
 		stats.overrides = stats.overrides + 1
 		batch[#batch + 1] = ("%s %d %s %d"):format(o.paladin, o.classID, o.target, o.blessing)
 		if #batch >= 5 then flush() end
+		end
 	end
 	flush()
 

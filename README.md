@@ -54,6 +54,27 @@ enough to actually use.
 
 Given the same raid, it always produces the same plan.
 
+## When your assignments will not stick
+
+Another paladin's client only accepts assignments you set for them if you are
+raid leader or assistant, or if they have ticked **Free Assignment** in
+PallyPower's own window. Two details are easy to get caught by:
+
+- **In a party there is no assistant.** PallyPower credits only the party
+  leader, so being in a party you did not make counts for nothing.
+- **Inside an instance-finder group it credits nobody at all.** Free Assignment
+  is the only route there.
+
+AutoPallyPower reads this rather than guessing. It learns each paladin's Free
+Assignment state from the broadcast PallyPower already sends, and treats a
+paladin who has never spoken on that channel as not having the addon installed.
+
+`/app status` shows your own authority plus, for each paladin, whether they are
+running PallyPower, their Free Assignment state, and whether you can set them.
+The Raid Plan tab warns before you apply, and `/app apply` **skips** anyone it
+cannot set rather than writing a plan into your own grid that nobody else
+received.
+
 ## Commands
 
 ```

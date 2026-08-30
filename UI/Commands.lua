@@ -103,16 +103,21 @@ handlers.apply = function()
 	local ok, msg = PP:Assert()
 	if not ok then return out(msg) end
 
-	if #result.paladins > 1 and not PP:CanControlOthers() then
-		out("|cffff2020You are not raid leader or assistant.|r Other paladins' clients will")
-		out("ignore assignments you set for them. Your own row will still apply.")
-	end
-
 	local applied, message, stats = PP:Apply(result)
 	if not applied then return out(message) end
 
 	out(("Applied: %d paladin rows, %d greater blessing changes, %d overrides set, %d cleared.")
 		:format(stats.rows, stats.cells, stats.overrides, stats.cleared))
+
+	if stats.blocked and #stats.blocked > 0 then
+		out(("|cffff2020Skipped %d paladin(s)|r -- their client would have ignored it:")
+			:format(#stats.blocked))
+		for _, b in ipairs(stats.blocked) do
+			out(("   %s -- %s"):format(b.name, b.why))
+		end
+		out("|cff9d9d9dFix either way: get raid assist, or ask them to tick Free Assignment")
+		out("in PallyPower's own window. In a party only the party leader counts.|r")
+	end
 	if #result.warnings > 0 then
 		for _, w in ipairs(result.warnings) do out("|cffff2020" .. w .. "|r") end
 	end
@@ -195,6 +200,10 @@ handlers.status = function()
 		-- is whatever it remembered from previous raids, not who is with you.
 		out("|cff9d9d9d  (remembered from previous raids -- PallyPower only syncs while grouped)|r")
 	end
+	out(("Your authority: %s"):format(PP:HaveAuthority()
+		and "|cff1eff00leader or assistant -- you can set anyone|r"
+		or "|cffff2020none -- you can only set paladins with Free Assignment on|r"))
+
 	for _, p in ipairs(pallys) do
 		local caps = {}
 		for _, b in ipairs(B.ALL) do
@@ -208,6 +217,14 @@ handlers.status = function()
 		end
 		out(("  %s  spec=%s  can cast: %s%s"):format(
 			p.name, p.spec, table.concat(caps, " "), note))
+
+		if p.name ~= PP.selfName then
+			local mark = p.canControl and "|cff1eff00can set|r" or "|cffff2020cannot set|r"
+			out(("      PallyPower: %s   free assign: %s   %s -- %s"):format(
+				p.hasPallyPower and "yes" or "|cffff2020not seen|r",
+				p.freeAssign == true and "on" or (p.freeAssign == false and "off" or "unknown"),
+				mark, p.controlWhy))
+		end
 	end
 end
 
