@@ -148,6 +148,58 @@ do
 	end
 end
 
+--------------------------------------------------------------------------
+print("== presets: save, activate, delete ==")
+do
+	APP.MainFrame:SelectTab(4)
+	local pane = APP.MainFrame.presetPane
+
+	T.check("empty message shown with no presets", pane.empty:IsShown())
+
+	-- The regression: the empty-state message used to borrow row 1 of the pool,
+	-- so the first saved preset reused a row with no activate button and died.
+	pane.box:SetText("heavy melee night")
+	local before = #chat
+	local saveBtn = stub.findByText("Save current as")
+	T.check("found the save button", saveBtn ~= nil)
+
+	local ok, err = pcall(stub.click, saveBtn)
+	T.check("saving does not error", ok, tostring(err))
+	for i = before + 1, #chat do
+		if tostring(chat[i]):find("%[APP error%]") then
+			T.check("no error surfaced while saving", false, chat[i])
+		end
+	end
+
+	T.check("preset stored", APP.db.presets["heavy melee night"] ~= nil)
+	T.check("empty message hidden", pane.empty:IsShown() == false)
+
+	local row = pane.content.rows[1]
+	T.check("the rendered row has its buttons", row ~= nil and row.activate ~= nil and row.delete ~= nil)
+
+	if row then
+		T.eq("row offers activation", row.activate:GetText(), "Activate")
+		stub.click(row.activate)
+		T.eq("preset activated", APP.db.activePreset, "heavy melee night")
+		T.eq("row now offers deactivation", row.activate:GetText(), "Deactivate")
+
+		stub.click(row.activate)
+		T.eq("preset deactivated", APP.db.activePreset, nil)
+
+		stub.click(row.delete)
+		T.eq("preset deleted", APP.db.presets["heavy melee night"], nil)
+		T.check("empty message returns", pane.empty:IsShown())
+	end
+
+	-- Saving with no name should say so rather than store a blank.
+	pane.box:SetText("")
+	local ok2 = pcall(stub.click, saveBtn)
+	T.check("empty name does not error", ok2)
+	local count = 0
+	for _ in pairs(APP.db.presets) do count = count + 1 end
+	T.eq("nothing stored for a blank name", count, 0)
+end
+
 stub.restore()
 
 print(("\nui: %d passed, %d failed"):format(T.passed, T.failed))

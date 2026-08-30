@@ -723,6 +723,12 @@ function UI:BuildPresets()
 	local scroll, content = scrollList(pane, body:GetWidth() - 40, body:GetHeight() - 120)
 	scroll:SetPoint("TOPLEFT", pane.box, "BOTTOMLEFT", -6, -12)
 	pane.content = content
+
+	-- Its own widget rather than a borrowed row. Sharing the row pool meant the
+	-- empty-state row was created without the activate and delete buttons, and
+	-- the first saved preset then reused that slot and died reaching for them.
+	pane.empty = label(content, "No presets saved yet.", "GameFontDisableSmall")
+	pane.empty:SetPoint("TOPLEFT", content, "TOPLEFT", 4, 0)
 end
 
 function UI:RefreshPresets()
@@ -737,25 +743,14 @@ function UI:RefreshPresets()
 	for name in pairs(db.presets or {}) do names[#names + 1] = name end
 	table.sort(names)
 
-	local y = 0
 	if #names == 0 then
-		local row = content.rows[1]
-		if not row then
-			row = CreateFrame("Frame", nil, content)
-			row:SetSize(400, 20)
-			row.text = label(row, "", "GameFontDisableSmall")
-			row.text:SetPoint("LEFT", row, "LEFT", 4, 0)
-			content.rows[1] = row
-		end
-		row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
-		row.text:SetText("No presets saved yet.")
-		row:Show()
-		if row.activate then row.activate:Hide() end
-		if row.delete then row.delete:Hide() end
+		pane.empty:Show()
 		content:SetHeight(20)
 		return
 	end
+	pane.empty:Hide()
 
+	local y = 0
 	for i, name in ipairs(names) do
 		local row = content.rows[i]
 		if not row then
@@ -771,14 +766,18 @@ function UI:RefreshPresets()
 		end
 		row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
 		row:Show()
-		if row.activate then row.activate:Show() end
-		if row.delete then row.delete:Show() end
 
 		local active = (db.activePreset == name)
 		row.text:SetText(active and ("|cff1eff00" .. name .. "  (active)|r") or name)
 		row.activate:SetText(active and "Deactivate" or "Activate")
 		row.activate:SetScript("OnClick", function()
-			db.activePreset = active and nil or name
+			-- Not `active and nil or name`: in Lua that always yields name,
+			-- so the toggle could only ever activate.
+			if active then
+				db.activePreset = nil
+			else
+				db.activePreset = name
+			end
 			UI:RefreshPresets()
 		end)
 		row.delete:SetScript("OnClick", function()
