@@ -17,6 +17,8 @@ function T.eq(name, got, want)
 end
 
 local chat = stub.install({ groupSize = 0 })
+-- From here the code under test sees the same missing globals the client has.
+stub.sandbox()
 local APP = stub.loadAddon(ROOT)
 
 --------------------------------------------------------------------------
@@ -145,6 +147,8 @@ do
 		T.check("moving a blessing up reorders the list", list[1] ~= firstBefore)
 	end
 end
+
+stub.restore()
 
 print(("\nui: %d passed, %d failed"):format(T.passed, T.failed))
 if T.failed > 0 then

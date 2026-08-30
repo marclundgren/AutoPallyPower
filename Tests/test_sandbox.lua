@@ -13,6 +13,10 @@ local FORBIDDEN = {
 	{ pattern = "[^%w_]dofile%s*%(", what = "dofile()" },
 	{ pattern = "[^%w_]loadfile%s*%(", what = "loadfile()" },
 	{ pattern = "[^%w_]collectgarbage%s*%(", what = "collectgarbage()" },
+	-- math.random exists in WoW; math.randomseed does not. Of the addons
+	-- installed alongside this one, 48 call math.random and none call
+	-- math.randomseed.
+	{ pattern = "math%s*%.%s*randomseed", what = "math.randomseed (absent in WoW)" },
 }
 
 --- Every Lua file the .toc actually loads into the client.

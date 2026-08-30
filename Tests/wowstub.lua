@@ -10,6 +10,12 @@
 -- be useful. The handful that carry real state are implemented properly.
 local stub = {}
 
+-- Captured before the sandbox removes them, so the stub itself can still read
+-- files while the code under test cannot.
+local realLoadfile = loadfile
+local realIo = io
+local realOs = os
+
 local widgets = {}
 stub.widgets = widgets
 
@@ -94,6 +100,32 @@ function stub.findByText(text)
 		if w.__text == text then return w end
 	end
 	return nil
+end
+
+--- Remove what the WoW sandbox does not provide.
+--
+-- Without this the stub runs under stock Lua, where os and math.randomseed
+-- exist -- and it will happily pass code that dies in the client. Both of this
+-- addon\'s silent in-game failures were exactly that, so the stub takes them
+-- away.
+function stub.sandbox()
+	stub.__removed = {
+		os = _G.os, io = _G.io, require = _G.require,
+		dofile = _G.dofile, loadfile = _G.loadfile,
+		randomseed = math.randomseed,
+	}
+	_G.os, _G.io, _G.require, _G.dofile, _G.loadfile = nil, nil, nil, nil, nil
+	math.randomseed = nil
+end
+
+--- Put them back, so the test runner can still exit and report.
+function stub.restore()
+	local r = stub.__removed
+	if not r then return end
+	_G.os, _G.io, _G.require = r.os, r.io, r.require
+	_G.dofile, _G.loadfile = r.dofile, r.loadfile
+	math.randomseed = r.randomseed
+	stub.__removed = nil
 end
 
 --- Install the globals the addon touches. Returns the chat log table.
@@ -196,7 +228,7 @@ end
 function stub.loadAddon(root)
 	local APP = {}
 	local files = {}
-	local f = assert(io.open(root .. "/AutoPallyPower.toc", "r"))
+	local f = assert(realIo.open(root .. "/AutoPallyPower.toc", "r"))
 	for line in f:lines() do
 		local t = line:match("^%s*(.-)%s*$")
 		if t ~= "" and t:sub(1, 1) ~= "#" and t:match("%.lua$") then
@@ -206,7 +238,7 @@ function stub.loadAddon(root)
 	f:close()
 
 	for _, rel in ipairs(files) do
-		local chunk, err = loadfile(root .. "/" .. rel)
+		local chunk, err = realLoadfile(root .. "/" .. rel)
 		if not chunk then error("load failed " .. rel .. ": " .. tostring(err)) end
 		local ok, runErr = pcall(chunk, "AutoPallyPower", APP)
 		if not ok then error("error while loading " .. rel .. ": " .. tostring(runErr)) end
