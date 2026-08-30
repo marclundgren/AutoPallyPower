@@ -16,6 +16,7 @@ Core\TestRaid.lua
 Core\Roster.lua
 Core\Config.lua
 Integration\PallyPower.lua
+UI\Theme.lua
 UI\Report.lua
 UI\MainFrame.lua
 UI\Minimap.lua
