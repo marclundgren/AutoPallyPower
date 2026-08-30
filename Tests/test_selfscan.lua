@@ -155,22 +155,72 @@ do
 end
 
 --------------------------------------------------------------------------
-print("== saved settings migrate to role grouping ==")
+print("== saved settings migrate forward without losing edits ==")
 do
+	local B2 = APP.Blessings
+
 	_G.AutoPallyPowerDB = { version = 1, railGrouping = "class", tankPriority = "threat" }
 	local db = Config:Load()
-	T.eq("old saved copy moved to role", db.railGrouping, "role")
-	T.eq("version bumped", db.version, 2)
+	T.eq("old saved copy moved to role grouping", db.railGrouping, "role")
+	T.eq("version bumped to current", db.version, 3)
+	T.eq("the retired tank setting is gone", db.tankPriority, nil)
 
-	-- A deliberate later choice must survive.
+	-- A deliberate grouping choice made after that migration must survive.
 	_G.AutoPallyPowerDB = { version = 2, railGrouping = "class" }
 	local db2 = Config:Load()
-	T.eq("an explicit choice at the new version is kept", db2.railGrouping, "class")
+	T.eq("an explicit grouping choice is kept", db2.railGrouping, "class")
 
 	_G.AutoPallyPowerDB = nil
 	local fresh = Config:Load()
 	T.eq("fresh install defaults to role", fresh.railGrouping, "role")
+	T.eq("fresh install has no tank setting", fresh.tankPriority, nil)
+
+	-- Someone editing their survival ordering when the toggle was removed must
+	-- keep that ordering, not silently revert to the threat one.
+	_G.AutoPallyPowerDB = {
+		version = 2,
+		tankPriority = "survival",
+		profiles = {
+			WARRIOR_TANK = {
+				label = "Warrior - Protection", class = "WARRIOR", role = "TANK", tank = true,
+				priority         = { B2.KINGS, B2.MIGHT },
+				prioritySurvival = { B2.SANCTUARY, B2.LIGHT, B2.KINGS },
+			},
+		},
+	}
+	local edited = Config:Load()
+	local warTank = edited.profiles.WARRIOR_TANK
+	T.eq("the edited survival ordering became the ordering", warTank.priority[1], B2.SANCTUARY)
+	T.eq("...in full", warTank.priority[3], B2.KINGS)
+	T.eq("the second ordering is gone", warTank.prioritySurvival, nil)
+	T.eq("version bumped", edited.version, 3)
+
+	-- Someone on threat keeps theirs, and still loses the second list.
+	_G.AutoPallyPowerDB = {
+		version = 2,
+		tankPriority = "threat",
+		profiles = {
+			WARRIOR_TANK = {
+				label = "Warrior - Protection", class = "WARRIOR", role = "TANK", tank = true,
+				priority         = { B2.KINGS, B2.MIGHT },
+				prioritySurvival = { B2.SANCTUARY },
+			},
+		},
+	}
+	local kept = Config:Load()
+	T.eq("threat ordering kept", kept.profiles.WARRIOR_TANK.priority[1], B2.KINGS)
+	T.eq("second ordering dropped", kept.profiles.WARRIOR_TANK.prioritySurvival, nil)
+
 	_G.AutoPallyPowerDB = nil
+end
+
+--------------------------------------------------------------------------
+print("== shipped profiles carry exactly one ordering ==")
+do
+	for key, profile in pairs(APP.Profiles.defaults) do
+		T.eq("no second ordering on " .. key, profile.prioritySurvival, nil)
+		T.check("has an ordering: " .. key, type(profile.priority) == "table" and #profile.priority > 0)
+	end
 end
 
 T.report("selfscan")

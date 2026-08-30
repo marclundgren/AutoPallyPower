@@ -7,10 +7,11 @@
 -- actually casting Holy Light on the target, and Sanctuary cannot be cast at
 -- all without a Protection-talented paladin present.
 --
--- Tank profiles carry two orderings. Whether a tank wants threat or survival
--- out of their second blessing is a real judgement call that changes per guild
--- and per fight, so it is a setting (opt.tankPriority) rather than a baked-in
--- answer.
+-- There is one ordering per profile. An earlier version carried a second
+-- "survival" ordering for tanks behind a toggle; it applied to tanks only,
+-- doubled the data, and made it ambiguous which list you were editing. A guild
+-- that wants a survival-first tank list can simply order it that way, or keep
+-- one as a preset.
 local ADDON, APP = ...
 
 local B = APP.Blessings
@@ -119,33 +120,32 @@ P.defaults = {
 	WARRIOR_TANK = {
 		label = "Warrior - Protection", class = "WARRIOR", role = "TANK", tank = true,
 		priority         = { KINGS, MIGHT, cond(LIGHT, HOLY), cond(SANCTUARY, PROT) },
-		prioritySurvival = { KINGS, cond(LIGHT, HOLY), MIGHT, cond(SANCTUARY, PROT) },
+		priority = { KINGS, cond(LIGHT, HOLY), MIGHT, cond(SANCTUARY, PROT) },
 	},
 	DRUID_TANK = {
 		label = "Druid - Feral (Tank)", class = "DRUID", role = "TANK", tank = true,
 		-- Wisdom is genuinely wanted but low: ferals powershift out of form
 		-- for the occasional cast and need a trickle of mana for it.
 		priority         = { KINGS, MIGHT, cond(LIGHT, HOLY), WISDOM },
-		prioritySurvival = { KINGS, cond(LIGHT, HOLY), MIGHT, WISDOM },
+		priority = { KINGS, cond(LIGHT, HOLY), MIGHT, WISDOM },
 	},
 	PALADIN_TANK = {
 		label = "Paladin - Protection", class = "PALADIN", role = "TANK", tank = true,
-		-- Sanctuary holds the second slot in both modes: it is simultaneously
-		-- the threat option and a damage reduction, so it does not trade off
-		-- against survival the way Might does.
+		-- Sanctuary sits second because it is simultaneously the threat option
+		-- and a damage reduction, so it does not trade off the way Might does.
 		priority         = { KINGS, cond(SANCTUARY, PROT), cond(LIGHT, HOLY), WISDOM },
-		prioritySurvival = { KINGS, cond(SANCTUARY, PROT), cond(LIGHT, HOLY), WISDOM },
+		priority = { KINGS, cond(SANCTUARY, PROT), cond(LIGHT, HOLY), WISDOM },
 	},
 	-- Caster tanking is rare but real (spellsteal mages, warlock tanks).
 	MAGE_TANK = {
 		label = "Mage - Tank", class = "MAGE", role = "TANK", tank = true,
 		priority         = { KINGS, WISDOM, cond(LIGHT, HOLY) },
-		prioritySurvival = { KINGS, cond(LIGHT, HOLY), WISDOM },
+		priority = { KINGS, cond(LIGHT, HOLY), WISDOM },
 	},
 	WARLOCK_TANK = {
 		label = "Warlock - Tank", class = "WARLOCK", role = "TANK", tank = true,
 		priority         = { KINGS, WISDOM, cond(LIGHT, HOLY) },
-		prioritySurvival = { KINGS, cond(LIGHT, HOLY), WISDOM },
+		priority = { KINGS, cond(LIGHT, HOLY), WISDOM },
 	},
 }
 
@@ -190,7 +190,7 @@ end
 
 --- Resolve a profile into a flat, ordered blessing list for the current raid.
 -- @param profile  a table from P.defaults (or a user-edited copy)
--- @param ctx      { holyPaladin = bool, protPaladin = bool, tankPriority = "threat"|"survival" }
+-- @param ctx      { holyPaladin = bool, protPaladin = bool }
 -- @return array of blessing ids, best first, with unsatisfied conditions removed
 function P:Resolve(profile, ctx)
 	ctx = ctx or {}
@@ -200,9 +200,6 @@ function P:Resolve(profile, ctx)
 	}
 
 	local source = profile.priority
-	if profile.tank and ctx.tankPriority == "survival" and profile.prioritySurvival then
-		source = profile.prioritySurvival
-	end
 
 	local out, seen = {}, {}
 	for i = 1, #source do

@@ -64,7 +64,6 @@ local function defaultConfig()
 	return {
 		weights = S.DEFAULT_WEIGHTS,
 		overridePenalty = S.DEFAULT_OVERRIDE_PENALTY,
-		tankPriority = "threat",
 		profiles = P.defaults,
 		playerProfileOverrides = {},
 	}
@@ -86,7 +85,6 @@ function S:BuildContext(paladins, config)
 	return {
 		holyPaladin = holy,
 		protPaladin = prot,
-		tankPriority = config.tankPriority or "threat",
 	}
 end
 

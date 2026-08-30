@@ -19,13 +19,12 @@ Config.copy = copy
 
 function Config:Defaults()
 	return {
-		version = 2,
+		version = 3,
 		-- The user's editable copy of the priority lists. Shipped defaults stay in
 		-- APP.Profiles.defaults so "reset" always has something to reset to.
 		profiles = copy(P.defaults),
 		-- name -> profile key, for players whose spec we cannot detect.
 		playerProfileOverrides = {},
-		tankPriority = "threat",
 		-- How the priority list groups its profiles: "class" or "role".
 		-- Role is the default: the priorities are written per role, so the
 		-- list reads the way the policy was actually decided.
@@ -69,6 +68,24 @@ function Config:Load()
 			db.version = 2
 		end
 
+		if (db.version or 1) < 3 then
+			-- The threat/survival toggle is gone. Whichever ordering was in
+			-- force is the one the user was actually looking at and editing,
+			-- so that is the one that survives.
+			if db.tankPriority == "survival" then
+				for _, profile in pairs(db.profiles or {}) do
+					if type(profile) == "table" and profile.prioritySurvival then
+						profile.priority = profile.prioritySurvival
+					end
+				end
+			end
+			for _, profile in pairs(db.profiles or {}) do
+				if type(profile) == "table" then profile.prioritySurvival = nil end
+			end
+			db.tankPriority = nil
+			db.version = 3
+		end
+
 		if type(db.profiles) ~= "table" then db.profiles = copy(P.defaults) end
 		-- Any profile we ship that the saved copy has never seen.
 		for key, profile in pairs(P.defaults) do
@@ -86,7 +103,6 @@ function Config:SolverConfig()
 	local db = APP.db or self:Load()
 
 	local profiles = db.profiles
-	local tankPriority = db.tankPriority
 
 	local preset = db.activePreset and db.presets[db.activePreset]
 	if preset then
@@ -96,24 +112,21 @@ function Config:SolverConfig()
 		for key, profile in pairs(preset.profiles or {}) do
 			profiles[key] = profile
 		end
-		if preset.tankPriority then tankPriority = preset.tankPriority end
 	end
 
 	return {
 		weights = db.weights,
 		overridePenalty = db.overridePenalty,
-		tankPriority = tankPriority,
 		profiles = profiles,
 		playerProfileOverrides = db.playerProfileOverrides,
 	}
 end
 
 --- Save the current raid's assignments as a named preset mutation.
-function Config:SavePreset(name, profiles, tankPriority)
+function Config:SavePreset(name, profiles)
 	local db = APP.db or self:Load()
 	db.presets[name] = {
 		profiles = profiles and copy(profiles) or {},
-		tankPriority = tankPriority,
 		created = time and time() or 0,
 	}
 end

@@ -152,41 +152,6 @@ handlers.test = function(args)
 	out("Run /app plan to see what it would assign.")
 end
 
-handlers.tankmode = function(args)
-	local db = APP.db
-	local mode = args[1]
-	if mode ~= "threat" and mode ~= "survival" then
-		return out(("Tank mode is '%s'. Use /app tankmode threat|survival."):format(db.tankPriority))
-	end
-	db.tankPriority = mode
-	if APP.MainFrame and APP.MainFrame.frame and APP.MainFrame.frame:IsShown() then
-		APP.MainFrame:RefreshPriorities()
-	end
-	out(("Tank mode set to '%s'. %s"):format(mode,
-		mode == "threat" and "Tanks favour Might/Sanctuary for threat."
-		or "Tanks favour Blessing of Light for survivability (needs a holy paladin)."))
-end
-
-handlers.grouping = function(args)
-	local db = APP.db
-	local mode = args[1]
-	if mode ~= "class" and mode ~= "role" then
-		out(("Priority list groups by '%s'. Use /app grouping class|role."):format(db.railGrouping))
-		return
-	end
-	db.railGrouping = mode
-	out(("Priority list now groups by %s."):format(mode))
-	if APP.MainFrame and APP.MainFrame.frame and APP.MainFrame.frame:IsShown() then
-		APP.MainFrame:RefreshPriorities()
-	end
-
-	for _, group in ipairs(P:GroupedList(mode, db.profiles)) do
-		local names = {}
-		for _, item in ipairs(group.items) do names[#names + 1] = item.label end
-		out(("  |cffffd100%s|r  %s"):format(group.label, table.concat(names, ", ")))
-	end
-end
-
 handlers.override = function(args)
 	local db = APP.db
 	local name, profileKey = args[1], args[2]
@@ -220,7 +185,6 @@ handlers.status = function()
 	PP:ScanSelf()
 	out(("PallyPower detected: %s"):format(PP:IsAvailable() and "yes" or "no"))
 	out(("Test mode: %s"):format(R:IsSimulated() and "on" or "off"))
-	out(("Tank mode: %s"):format(db.tankPriority))
 	out(("Priority grouping: %s"):format(db.railGrouping))
 	out(("Override threshold: %d"):format(db.overridePenalty))
 	local pallys = PP:GetPaladins()
@@ -256,7 +220,6 @@ handlers.help = function()
 	out("  /app apply                   push the plan into PallyPower")
 	out("  /app test [n] [pal] [tank] [heal] [seed]   simulate a raid")
 	out("  /app test off                back to the live raid")
-	out("  /app tankmode threat|survival")
 	out("  /app grouping class|role         how the priority list is grouped")
 	out("  /app override <player> <PROFILE|clear>")
 	out("  /app status                  what the addon currently sees")
@@ -281,7 +244,7 @@ function Commands:Handle(input)
 		out(("Unknown command '%s'."):format(cmd))
 		return handlers.help()
 	end
-	handler(parts)
+	APP.SafeCall("/app " .. cmd, handler, parts)
 end
 
 --------------------------------------------------------------------------
@@ -296,6 +259,7 @@ frame:RegisterEvent("SPELLS_CHANGED")
 frame:RegisterEvent("CHARACTER_POINTS_CHANGED")
 
 frame:SetScript("OnEvent", function(_, event, arg1, ...)
+	return APP.SafeCall("event " .. tostring(event), function(...)
 	if event == "ADDON_LOADED" and arg1 == ADDON then
 		Config:Load()
 
@@ -310,6 +274,10 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
 		SLASH_AUTOPALLYPOWER1 = "/app"
 		SLASH_AUTOPALLYPOWER2 = "/autopallypower"
 		SlashCmdList["AUTOPALLYPOWER"] = function(msg) Commands:Handle(msg) end
+
+		-- Read our own talents straight away rather than waiting for the first
+		-- world event, so /app status is right the moment the addon loads.
+		PP:ScanSelf()
 
 		if APP.Minimap then APP.Minimap:Create() end
 
@@ -327,4 +295,5 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
 		-- Talents and spellbook can both change under us; rescanning is cheap.
 		PP:ScanSelf()
 	end
+	end, ...)
 end)

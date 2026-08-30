@@ -63,7 +63,6 @@ Given the same raid, it always produces the same plan.
 /app apply      push the plan into PallyPower
 /app test 25 2 2 5      simulate a 25-man: 2 paladins, 2 tanks, 5 healers
 /app test off   back to the live raid
-/app tankmode threat|survival
 /app grouping class|role         how the priority list is grouped
 /app override <player> <PROFILE|clear>
 /app status     what the addon currently sees
@@ -71,12 +70,6 @@ Given the same raid, it always produces the same plan.
 
 Test mode generates a synthetic raid so you can see the engine work without
 being in a group. Applying is disabled while it is on.
-
-## Tank mode
-
-Whether a tank's second blessing should be Might (threat) or Light (survival)
-is a real judgement call that changes per guild and per fight, so it is a
-setting rather than a baked-in answer. `threat` is the default.
 
 ## Installing
 

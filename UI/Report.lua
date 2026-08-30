@@ -49,10 +49,9 @@ function Report:Plan(result, opts)
 	add(C("head", "AutoPallyPower plan"))
 	add(("  %d paladins: %s"):format(#result.paladins,
 		#pallyNames > 0 and table.concat(pallyNames, ", ") or "none"))
-	add(("  holy paladin: %s   prot paladin: %s   tank mode: %s"):format(
+	add(("  holy paladin: %s   prot paladin: %s"):format(
 		result.context.holyPaladin and "yes" or "no",
-		result.context.protPaladin and "yes" or "no",
-		result.context.tankPriority))
+		result.context.protPaladin and "yes" or "no"))
 	add("")
 
 	add(C("head", "Greater blessings by class"))

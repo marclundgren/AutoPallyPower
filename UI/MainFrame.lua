@@ -92,24 +92,41 @@ local function button(parent, text, w, h, onClick)
 	local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
 	b:SetSize(w, h or 21)
 	b:SetText(text)
-	if onClick then b:SetScript("OnClick", onClick) end
+	if onClick then
+		-- Wrapped so a broken handler reports itself rather than reading as a
+		-- dead button.
+		b:SetScript("OnClick", function(...)
+			return APP.SafeCall("button '" .. tostring(text) .. "'", onClick, ...)
+		end)
+	end
 	return b
 end
 
 --- A scrolling list whose rows are created on demand and reused.
--- The scroll frame is given a real name because UIPanelScrollFrameTemplate
--- builds a child called "$parentScrollBar"; with an anonymous parent that name
--- does not resolve and the template errors out.
-local scrollSerial = 0
+--
+-- Deliberately not UIPanelScrollFrameTemplate: that template always draws its
+-- scrollbar, including the two arrow buttons, whether or not there is anything
+-- to scroll. Those arrows landed on top of the detail pane and covered its
+-- text. A bare ScrollFrame with a mouse-wheel handler has no chrome to collide
+-- with, and the lists here are short enough not to need a visible bar.
 local function scrollList(parent, w, h)
-	scrollSerial = scrollSerial + 1
-	local scroll = CreateFrame("ScrollFrame", "AutoPallyPowerScroll" .. scrollSerial,
-		parent, "UIPanelScrollFrameTemplate")
+	local scroll = CreateFrame("ScrollFrame", nil, parent)
 	scroll:SetSize(w, h)
+
 	local content = CreateFrame("Frame", nil, scroll)
 	content:SetSize(w, h)
 	scroll:SetScrollChild(content)
 	content.rows = {}
+
+	scroll:EnableMouseWheel(true)
+	scroll:SetScript("OnMouseWheel", function(self, delta)
+		local range = math.max(0, content:GetHeight() - self:GetHeight())
+		local target = self:GetVerticalScroll() - delta * 24
+		if target < 0 then target = 0 end
+		if target > range then target = range end
+		self:SetVerticalScroll(target)
+	end)
+
 	return scroll, content
 end
 
@@ -255,19 +272,6 @@ function UI:BuildPriorities()
 	detail.applies = label(detail, "", "GameFontDisableSmall")
 	detail.applies:SetPoint("TOPLEFT", detail.heading, "BOTTOMLEFT", 0, -3)
 
-	detail.favorsLabel = label(detail, "Favors", "GameFontDisableSmall")
-	detail.favorsLabel:SetPoint("TOPLEFT", detail.applies, "BOTTOMLEFT", 0, -8)
-
-	detail.threat = button(detail, "Threat", 60, 19, function()
-		APP.db.tankPriority = "threat"; UI:RefreshPriorities()
-	end)
-	detail.threat:SetPoint("LEFT", detail.favorsLabel, "RIGHT", 6, 0)
-
-	detail.survival = button(detail, "Survival", 66, 19, function()
-		APP.db.tankPriority = "survival"; UI:RefreshPriorities()
-	end)
-	detail.survival:SetPoint("LEFT", detail.threat, "RIGHT", 3, 0)
-
 	detail.rows = {}
 
 	detail.reset = button(detail, "Reset to default", 120, 20, function()
@@ -286,10 +290,7 @@ end
 
 --- The list being edited for the selected profile.
 function UI:ActiveList(profile)
-	if profile.tank and APP.db.tankPriority == "survival" and profile.prioritySurvival then
-		return profile.prioritySurvival, "prioritySurvival"
-	end
-	return profile.priority, "priority"
+	return profile.priority
 end
 
 local function entryBlessing(entry)
@@ -386,17 +387,8 @@ function UI:RefreshDetail()
 			:format((profile.class or ""):lower())
 		or "")
 
-	local isTank = profile.tank and profile.prioritySurvival
-	detail.favorsLabel:SetShown(isTank)
-	detail.threat:SetShown(isTank)
-	detail.survival:SetShown(isTank)
-	if isTank then
-		setEnabled(detail.threat, db.tankPriority ~= "threat")
-		setEnabled(detail.survival, db.tankPriority ~= "survival")
-	end
-
 	local list = self:ActiveList(profile)
-	local top = isTank and -58 or -34
+	local top = -40
 
 	for _, row in ipairs(detail.rows) do row:Hide() end
 
@@ -549,11 +541,10 @@ function UI:RefreshPlan()
 		return
 	end
 
-	pane.summary:SetText(("%d paladins  |  holy: %s  |  prot: %s  |  favors: %s%s"):format(
+	pane.summary:SetText(("%d paladins  |  holy: %s  |  prot: %s%s"):format(
 		#result.paladins,
 		result.context.holyPaladin and "yes" or "no",
 		result.context.protPaladin and "yes" or "no",
-		result.context.tankPriority,
 		simulated and "  |  |cffff6060SIMULATED|r" or ""))
 
 	-- Applying a simulated plan would write a fictional raid into PallyPower.
@@ -722,7 +713,7 @@ function UI:BuildPresets()
 			APP.Print("Type a name first.")
 			return
 		end
-		Config:SavePreset(name, APP.db.profiles, APP.db.tankPriority)
+		Config:SavePreset(name, APP.db.profiles)
 		pane.box:SetText("")
 		UI:RefreshPresets()
 		APP.Print(("Saved preset '%s'."):format(name))
