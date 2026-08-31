@@ -385,6 +385,28 @@ function PP:ReadCurrent()
 end
 
 --------------------------------------------------------------------------
+-- Asking the group to resync
+--------------------------------------------------------------------------
+
+--- Ask every paladin to rebroadcast their talents and free-assign state.
+--
+-- PallyPower answers a bare "REQ" by resending its SELF and FREEASSIGN
+-- messages, so this pulls fresh data through its own protocol without adding
+-- one of our own. Replies arrive asynchronously, which is why callers re-solve
+-- again shortly after rather than immediately expecting new data.
+--
+-- Deliberately not automatic: it makes every paladin in the raid rebroadcast,
+-- so it belongs behind a button the user pressed.
+function PP:RequestSync()
+	if not self:IsAvailable() then return false end
+	if (_G.GetNumGroupMembers and _G.GetNumGroupMembers() or 0) == 0 then
+		return false
+	end
+	_G.PallyPower:SendMessage("REQ")
+	return true
+end
+
+--------------------------------------------------------------------------
 -- Verifying what actually landed
 --------------------------------------------------------------------------
 

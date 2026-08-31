@@ -153,6 +153,36 @@ function UI:SelectTab(index)
 	elseif index == 4 then self:RefreshPresets() end
 end
 
+--- Recompute the plan now, if it is the thing on screen.
+function UI:RefreshNow()
+	self.__refreshPending = nil
+	if not self.frame or not self.frame:IsShown() then return end
+	if self.current ~= 2 then return end
+	self:RefreshPlan()
+end
+
+--- Recompute shortly, coalescing a burst of events into one pass.
+--
+-- GROUP_ROSTER_UPDATE fires several times for a single join or leave, and
+-- re-solving on each would be wasted work and a visibly flickering panel.
+function UI:ScheduleRefresh(delay)
+	if not self.frame or not self.frame:IsShown() then return end
+	if self.current ~= 2 then return end
+	if self.__refreshPending then return end
+	self.__refreshPending = true
+
+	local function run()
+		if not UI.__refreshPending then return end
+		UI:RefreshNow()
+	end
+
+	if C_Timer and C_Timer.After then
+		C_Timer.After(delay or 0.5, run)
+	else
+		run()
+	end
+end
+
 function UI:Toggle()
 	local f = self:Get()
 	if f:IsShown() then f:Hide() else f:Show(); self:SelectTab(self.current or 1) end
@@ -514,16 +544,36 @@ function UI:BuildPlan()
 	end, "default")
 	pane.verify:SetPoint("LEFT", pane.apply, "RIGHT", 8, 0)
 
+	pane.refresh = Theme:Button(pane, "Refresh", 90, 24, function()
+		APP.Commands:Handle("refresh")
+	end, "default")
+	pane.refresh:SetPoint("LEFT", pane.verify, "RIGHT", 8, 0)
+
 	pane.applyNote = Theme:Text(pane, "meta", "", Theme.color.textFaint)
-	pane.applyNote:SetPoint("LEFT", pane.verify, "RIGHT", 12, 0)
+	pane.applyNote:SetPoint("LEFT", pane.refresh, "RIGHT", 12, 0)
+
+	-- Without this there is no way to tell a stale panel from a fresh one.
+	pane.stamp = Theme:Text(pane, "meta", "", Theme.color.textFaint)
+	pane.stamp:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", -12, 18)
+	pane.stamp:SetJustifyH("RIGHT")
 end
 
 local function hideAll(list) for _, w in ipairs(list) do w:Hide() end end
+
+--- Clock time, when the client offers one.
+local function nowText()
+	if _G.date then return _G.date("%H:%M:%S") end
+	return nil
+end
 
 function UI:RefreshPlan()
 	local pane = self.planPane
 	if not pane then return end
 	local content = pane.content
+
+	self.__refreshPending = nil
+	local stamped = nowText()
+	pane.stamp:SetText(stamped and ("updated " .. stamped) or "")
 
 	hideAll(content.gridRows); hideAll(content.gridHeads); hideAll(content.ovrRows)
 

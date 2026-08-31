@@ -19,6 +19,14 @@ local realOs = os
 local widgets = {}
 stub.widgets = widgets
 
+-- The group the stubbed client is currently in. Mutable so a test can have
+-- someone join or leave and then fire the event the client would.
+stub.group = { members = {}, raid = false }
+
+-- Callbacks queued by C_Timer.After, run on demand rather than by a clock, so
+-- debounced work is deterministic instead of a race.
+stub.timers = {}
+
 local Widget = {}
 
 local function noop() end
@@ -80,6 +88,57 @@ function Widget:CreateFontString(name)
 end
 function Widget:CreateTexture(name)
 	return newWidget("Texture", name, self)
+end
+
+--- Replace the group and, optionally, make it a raid.
+function stub.setGroup(members, raid)
+	stub.group.members = members or {}
+	stub.group.raid = raid and true or false
+	-- PallyPower remembers a row per paladin; the adapter reads its keys.
+	_G.PallyPower_Assignments = _G.PallyPower_Assignments or {}
+	for _, m in ipairs(stub.group.members) do
+		if m.class == "PALADIN" then
+			_G.PallyPower_Assignments[m.name] = _G.PallyPower_Assignments[m.name] or {}
+		end
+	end
+end
+
+--- Unit id -> member, for whichever group shape we are in.
+local function unitMap()
+	local map = {}
+	if stub.group.raid then
+		for i, m in ipairs(stub.group.members) do map["raid" .. i] = m end
+	else
+		local members = stub.group.members
+		if members[1] then map.player = members[1] end
+		for i = 2, #members do map["party" .. (i - 1)] = members[i] end
+	end
+	return map
+end
+
+--- Deliver an event to every frame registered for it.
+function stub.fireEvent(event, ...)
+	for _, w in ipairs(widgets) do
+		if w.__events and w.__events[event] and w.__scripts.OnEvent then
+			w.__scripts.OnEvent(w, event, ...)
+		end
+	end
+end
+
+--- Run everything C_Timer.After queued. Returns how many ran.
+-- Loops so a timer that queues another still settles.
+function stub.runTimers()
+	local ran = 0
+	for _ = 1, 10 do
+		local due = stub.timers
+		if #due == 0 then break end
+		stub.timers = {}
+		for _, t in ipairs(due) do
+			t.fn()
+			ran = ran + 1
+		end
+	end
+	return ran
 end
 
 --- Fire a widget's OnClick the way the client would.
@@ -167,16 +226,55 @@ function stub.install(opts)
 	_G.time = function() return 1788000000 end
 	_G.GetTime = function() return 1000.0 end
 
-	_G.GetNumGroupMembers = function() return opts.groupSize or 0 end
-	_G.IsInRaid = function() return (opts.groupSize or 0) > 0 and opts.inRaid ~= false end
-	_G.IsInGroup = function() return (opts.groupSize or 0) > 0 end
-	_G.UnitExists = function() return false end
-	_G.GetRaidRosterInfo = function() return nil end
-	_G.UnitIsGroupLeader = function() return false end
+	stub.group.members = opts.members or {}
+	stub.group.raid = opts.inRaid and true or false
+	stub.timers = {}
+
+	_G.C_Timer = {
+		After = function(delay, fn)
+			stub.timers[#stub.timers + 1] = { delay = delay, fn = fn }
+		end,
+	}
+
+	_G.GetNumGroupMembers = function() return #stub.group.members end
+	_G.IsInRaid = function() return stub.group.raid end
+	_G.IsInGroup = function() return #stub.group.members > 0 end
+	_G.UnitExists = function(u) return unitMap()[u] ~= nil end
+	_G.GetUnitName = function(u)
+		local m = unitMap()[u]
+		return m and m.name
+	end
+	_G.UnitGroupRolesAssigned = function(u)
+		local m = unitMap()[u]
+		return (m and m.role) or "NONE"
+	end
+	_G.GetRaidRosterInfo = function(i)
+		local m = stub.group.members[i]
+		if not m then return nil end
+		return m.name, 0, 1, 70, m.class, m.class, nil, nil, nil, m.raidRole
+	end
+	_G.UnitIsGroupLeader = function() return opts.leader and true or false end
 	_G.UnitIsGroupAssistant = function() return false end
 
-	_G.UnitClass = function() return "Paladin", opts.playerClass or "PALADIN" end
-	_G.UnitName = function() return opts.playerName or "Rageblue" end
+	_G.UnitClass = function(u)
+		if u and u ~= "player" then
+			local m = unitMap()[u]
+			if m then return m.class, m.class end
+		end
+		return "Paladin", opts.playerClass or "PALADIN"
+	end
+	_G.UnitName = function(u)
+		if u and u ~= "player" then
+			local m = unitMap()[u]
+			if m then return m.name end
+		end
+		return opts.playerName or "Rageblue"
+	end
+	_G.date = function() return "12:00:00" end
+
+	_G.PallyPower = { SendMessage = function() end, UpdateLayout = function() end }
+	_G.PallyPower_Assignments = {}
+	_G.PallyPower_NormalAssignments = {}
 
 	-- A paladin who knows everything but Sanctuary, with Improved Wisdom.
 	local names = {

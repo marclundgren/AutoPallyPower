@@ -210,6 +210,135 @@ do
 	T.eq("nothing stored for a blank name", count, 0)
 end
 
+--------------------------------------------------------------------------
+print("== the plan recalculates when the group changes ==")
+do
+	local B = APP.Blessings
+
+	-- Leave test mode so the plan is solving a live group.
+	APP.Commands:Handle("test off")
+
+	local function paladinKnows(name)
+		APP.PP.observed[name] = {
+			[B.WISDOM] = { rank = 1, talent = 0 }, [B.MIGHT] = { rank = 1, talent = 0 },
+			[B.KINGS] = { rank = 1, talent = 0 }, [B.SALVATION] = { rank = 1, talent = 0 },
+			[B.LIGHT] = { rank = 1, talent = 0 },
+		}
+		APP.PP.heard[name] = true
+	end
+
+	stub.setGroup({
+		{ name = "Rageblue", class = "PALADIN", role = "TANK" },
+		{ name = "Barkskin", class = "DRUID", role = "HEALER" },
+	})
+	paladinKnows("Rageblue")
+
+	APP.MainFrame:Show()
+	APP.MainFrame:SelectTab(2)
+	local stats = APP.MainFrame.planPane.stats
+	T.eq("plan sees the group", stats.raid.value:GetText(), "2")
+
+	-- Someone joins. The client fires this several times for one change.
+	stub.setGroup({
+		{ name = "Rageblue", class = "PALADIN", role = "TANK" },
+		{ name = "Barkskin", class = "DRUID", role = "HEALER" },
+		{ name = "Cleaver", class = "WARRIOR", role = "DAMAGER" },
+	})
+	stub.timers = {}
+	stub.fireEvent("GROUP_ROSTER_UPDATE")
+	stub.fireEvent("GROUP_ROSTER_UPDATE")
+	stub.fireEvent("GROUP_ROSTER_UPDATE")
+	T.eq("a burst of events queues one refresh, not three", #stub.timers, 1)
+
+	stub.runTimers()
+	T.eq("the plan picked up the new member", stats.raid.value:GetText(), "3")
+
+	-- And when someone leaves.
+	stub.setGroup({
+		{ name = "Rageblue", class = "PALADIN", role = "TANK" },
+	})
+	stub.fireEvent("GROUP_ROSTER_UPDATE")
+	stub.runTimers()
+	T.eq("the plan picked up the departure", stats.raid.value:GetText(), "1")
+end
+
+--------------------------------------------------------------------------
+print("== a role change recalculates too ==")
+do
+	local stats = APP.MainFrame.planPane.stats
+	stub.setGroup({
+		{ name = "Rageblue", class = "PALADIN", role = "TANK" },
+		{ name = "Barkskin", class = "DRUID", role = "DAMAGER" },
+	})
+	stub.fireEvent("GROUP_ROSTER_UPDATE")
+	stub.runTimers()
+	T.eq("druid is not counted as a healer", stats.healers.value:GetText(), "0")
+
+	-- They switch to healer in the group finder.
+	stub.setGroup({
+		{ name = "Rageblue", class = "PALADIN", role = "TANK" },
+		{ name = "Barkskin", class = "DRUID", role = "HEALER" },
+	})
+	stub.fireEvent("PLAYER_ROLES_ASSIGNED")
+	stub.runTimers()
+	T.eq("the healer count follows the role change", stats.healers.value:GetText(), "1")
+end
+
+--------------------------------------------------------------------------
+print("== /app refresh forces a recalculation and asks the group to resync ==")
+do
+	local sent = {}
+	_G.PallyPower.SendMessage = function(_, msg) sent[#sent + 1] = msg end
+
+	local stats = APP.MainFrame.planPane.stats
+	-- Change the roster without firing any event, so only an explicit refresh
+	-- can notice.
+	stub.setGroup({
+		{ name = "Rageblue", class = "PALADIN", role = "TANK" },
+		{ name = "Barkskin", class = "DRUID", role = "HEALER" },
+		{ name = "Cleaver", class = "WARRIOR", role = "DAMAGER" },
+		{ name = "Totemic", class = "SHAMAN", role = "DAMAGER" },
+	})
+	T.eq("panel is still showing the old roster", stats.raid.value:GetText(), "2")
+
+	local before = #chat
+	local ok, err = pcall(APP.Commands.Handle, APP.Commands, "refresh")
+	T.check("refresh does not error", ok, tostring(err))
+	for i = before + 1, #chat do
+		if tostring(chat[i]):find("%[APP error%]") then
+			T.check("no error surfaced on refresh", false, chat[i])
+		end
+	end
+
+	T.eq("refresh recalculated immediately", stats.raid.value:GetText(), "4")
+
+	local askedForResync = false
+	for _, msg in ipairs(sent) do
+		if msg == "REQ" then askedForResync = true end
+	end
+	T.check("it asked the group to resend their talents", askedForResync)
+
+	-- Replies arrive late, so it solves again once they have had time to land.
+	T.check("a follow-up pass is queued", #stub.timers > 0)
+	stub.runTimers()
+	T.eq("still correct after the follow-up", stats.raid.value:GetText(), "4")
+end
+
+--------------------------------------------------------------------------
+print("== a hidden window does not do the work ==")
+do
+	APP.MainFrame.frame:Hide()
+	stub.timers = {}
+	stub.fireEvent("GROUP_ROSTER_UPDATE")
+	T.eq("nothing scheduled while closed", #stub.timers, 0)
+
+	APP.MainFrame:Show()
+	APP.MainFrame:SelectTab(1)
+	stub.timers = {}
+	stub.fireEvent("GROUP_ROSTER_UPDATE")
+	T.eq("nothing scheduled while on another tab", #stub.timers, 0)
+end
+
 stub.restore()
 
 print(("\nui: %d passed, %d failed"):format(T.passed, T.failed))

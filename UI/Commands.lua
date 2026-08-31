@@ -134,6 +134,30 @@ handlers.apply = function()
 	end
 end
 
+handlers.refresh = function()
+	PP:ScanSelf()
+
+	-- Pull fresh talents and free-assign state from everyone. Their replies
+	-- land over the next second or so, so solve now for an immediate answer and
+	-- again once the responses have had time to arrive.
+	local asked = PP:RequestSync()
+
+	if APP.MainFrame then APP.MainFrame:RefreshNow() end
+
+	if asked then
+		out("Refreshed, and asked the group to resend their talents.")
+		if C_Timer and C_Timer.After then
+			C_Timer.After(2, function()
+				APP.SafeCall("refresh follow-up", function()
+					if APP.MainFrame then APP.MainFrame:RefreshNow() end
+				end)
+			end)
+		end
+	else
+		out("Refreshed.")
+	end
+end
+
 handlers.verify = function()
 	local ok, msg = PP:Assert()
 	if not ok then return out(msg) end
@@ -288,6 +312,7 @@ handlers.help = function()
 	out("  /app report                  show what each player would end up with")
 	out("  /app preview                 show what applying would change")
 	out("  /app verify                  check what PallyPower actually holds")
+	out("  /app refresh                 recalculate, and resync the group")
 	out("  /app apply                   push the plan into PallyPower")
 	out("  /app test [n] [pal] [tank] [heal] [seed]   simulate a raid")
 	out("  /app test off                back to the live raid")
@@ -328,6 +353,8 @@ frame:RegisterEvent("CHAT_MSG_ADDON")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("SPELLS_CHANGED")
 frame:RegisterEvent("CHARACTER_POINTS_CHANGED")
+frame:RegisterEvent("GROUP_ROSTER_UPDATE")
+frame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
 
 frame:SetScript("OnEvent", function(_, event, arg1, ...)
 	return APP.SafeCall("event " .. tostring(event), function(...)
@@ -362,9 +389,15 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
 		local prefix, message, channel, sender = arg1, ...
 		PP:OnAddonMessage(prefix, message, channel, sender)
 
+	elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED" then
+		-- Someone joined, left, or changed role. These fire in bursts, so the
+		-- refresh is coalesced rather than run once per event.
+		if APP.MainFrame then APP.MainFrame:ScheduleRefresh() end
+
 	else
 		-- Talents and spellbook can both change under us; rescanning is cheap.
 		PP:ScanSelf()
+		if APP.MainFrame then APP.MainFrame:ScheduleRefresh() end
 	end
 	end, ...)
 end)
