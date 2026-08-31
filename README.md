@@ -103,6 +103,7 @@ received.
 /app report     show what each player would end up with
 /app preview    show what applying would change
 /app verify     check what PallyPower actually holds
+/app refresh    recalculate, and ask the group to resend their talents
 /app apply      push the plan into PallyPower
 /app test 25 2 2 5      simulate a 25-man: 2 paladins, 2 tanks, 5 healers
 /app test off   back to the live raid
@@ -163,6 +164,22 @@ same version the game ships.
 ```
 
 No WoW client, and no group, required.
+
+## Keeping the plan current
+
+The Raid Plan recalculates on its own when someone joins, leaves, or changes
+their group finder role. A burst of events is coalesced into a single pass, and
+nothing is recomputed while the window is closed or showing another tab.
+
+A spec change on someone else's character is not something the client reports,
+so that has to be asked for. **Refresh** on the Raid Plan tab, or `/app
+refresh`, sends PallyPower's own `REQ`, which makes every paladin rebroadcast
+their talents and Free Assignment state; the plan solves immediately and again
+once the replies have landed. It is deliberately manual, because it makes every
+paladin in the raid rebroadcast.
+
+The panel timestamps each recalculation, so a stale view is visible rather than
+assumed.
 
 ## Confirming an override landed
 
