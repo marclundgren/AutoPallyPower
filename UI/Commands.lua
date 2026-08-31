@@ -109,6 +109,17 @@ handlers.apply = function()
 	out(("Applied: %d paladin rows, %d greater blessing changes, %d overrides set, %d cleared.")
 		:format(stats.rows, stats.cells, stats.overrides, stats.cleared))
 
+	-- Read it straight back. An override is one icon on one row of a pop-out
+	-- list, so without this "did that work" is genuinely hard to answer.
+	local report = PP:Verify(result)
+	if report.ok then
+		out(("|cff1eff00Verified:|r %d greater cells, %d overrides now match the plan.")
+			:format(report.matchedGrid, report.matchedOverrides))
+	else
+		out(("|cffff2020Verify found %d missing and %d differing.|r Run /app verify for detail.")
+			:format(#report.missing, #report.different))
+	end
+
 	if stats.blocked and #stats.blocked > 0 then
 		out(("|cffff2020Skipped %d paladin(s)|r -- their client would have ignored it:")
 			:format(#stats.blocked))
@@ -120,6 +131,48 @@ handlers.apply = function()
 	end
 	if #result.warnings > 0 then
 		for _, w in ipairs(result.warnings) do out("|cffff2020" .. w .. "|r") end
+	end
+end
+
+handlers.verify = function()
+	local ok, msg = PP:Assert()
+	if not ok then return out(msg) end
+	if R:IsSimulated() then
+		return out("Test mode is on; there is nothing live to verify against.")
+	end
+
+	local result, err = Commands:Solve()
+	if not result then return out(err) end
+
+	local report = PP:Verify(result)
+	out(("Verify: %d greater blessing cells and %d overrides match what PallyPower holds.")
+		:format(report.matchedGrid, report.matchedOverrides))
+
+	if #report.skipped > 0 then
+		out(("|cff9d9d9dNot checked (you cannot set them): %s|r")
+			:format(table.concat(report.skipped, ", ")))
+	end
+
+	for _, m in ipairs(report.missing) do
+		out(("|cffff2020missing|r  %s: %s on %s is not set")
+			:format(m.paladin, B:Name(m.blessing), m.target))
+	end
+	for _, d in ipairs(report.different) do
+		if d.kind == "override" then
+			out(("|cffff2020differs|r  %s: %s has %s, plan wants %s")
+				:format(d.paladin, d.target, B:Name(d.have), B:Name(d.want)))
+		else
+			out(("|cffff2020differs|r  %s: %s column has %s, plan wants %s")
+				:format(d.paladin, B.CLASS_BY_ID[d.classID] or d.classID,
+					B:Name(d.have), B:Name(d.want)))
+		end
+	end
+
+	if report.ok then
+		out("|cff1eff00Everything the plan asked for is in place.|r")
+		if report.matchedOverrides > 0 then
+			out("|cff9d9d9dOverrides show in PallyPower on the per-player pop-out for that class.|r")
+		end
 	end
 end
 
@@ -234,6 +287,7 @@ handlers.help = function()
 	out("  /app plan                    solve the current raid and show the plan")
 	out("  /app report                  show what each player would end up with")
 	out("  /app preview                 show what applying would change")
+	out("  /app verify                  check what PallyPower actually holds")
 	out("  /app apply                   push the plan into PallyPower")
 	out("  /app test [n] [pal] [tank] [heal] [seed]   simulate a raid")
 	out("  /app test off                back to the live raid")

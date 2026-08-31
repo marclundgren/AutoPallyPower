@@ -385,6 +385,82 @@ function PP:ReadCurrent()
 end
 
 --------------------------------------------------------------------------
+-- Verifying what actually landed
+--------------------------------------------------------------------------
+
+--- Read one per-player override straight out of PallyPower's table.
+function PP:ReadOverride(paladin, classID, target)
+	local normals = _G.PallyPower_NormalAssignments
+	if not normals then return nil end
+	local byClass = normals[paladin]
+	if not byClass then return nil end
+	local targets = byClass[classID]
+	if not targets then return nil end
+	return targets[target]
+end
+
+--- Compare a plan against what PallyPower is holding right now.
+--
+-- Worth having as a first-class command rather than something to eyeball: a
+-- greater blessing is visible on the grid the moment it lands, but a per-player
+-- override is one icon on one row of a pop-out list, so "did that actually
+-- work" is otherwise genuinely hard to answer.
+-- @return report { matchedGrid, matchedOverrides, missing = {}, different = {}, skipped = {} }
+function PP:Verify(result)
+	local report = {
+		matchedGrid = 0, matchedOverrides = 0,
+		missing = {}, different = {}, skipped = {},
+	}
+	if not self:IsAvailable() then return report end
+
+	local assignments = _G.PallyPower_Assignments or {}
+
+	for _, pally in ipairs(result.paladins or {}) do
+		local name = pally.name
+		local controllable = self:ControlStatus(name)
+		if not controllable then
+			report.skipped[#report.skipped + 1] = name
+		else
+			local row = assignments[name] or {}
+			for classID = 1, B.MAX_CLASSES do
+				local want = (result.grid[name] and result.grid[name][classID]) or B.NONE
+				local have = row[classID] or B.NONE
+				if want == have then
+					report.matchedGrid = report.matchedGrid + 1
+				else
+					report.different[#report.different + 1] = {
+						kind = "greater", paladin = name, classID = classID,
+						want = want, have = have,
+					}
+				end
+			end
+		end
+	end
+
+	local skipped = {}
+	for _, name in ipairs(report.skipped) do skipped[name] = true end
+
+	for _, o in ipairs(result.overrides or {}) do
+		if not skipped[o.paladin] then
+			local have = self:ReadOverride(o.paladin, o.classID, o.target)
+			if have == o.blessing then
+				report.matchedOverrides = report.matchedOverrides + 1
+			elseif have == nil then
+				report.missing[#report.missing + 1] = o
+			else
+				report.different[#report.different + 1] = {
+					kind = "override", paladin = o.paladin, classID = o.classID,
+					target = o.target, want = o.blessing, have = have,
+				}
+			end
+		end
+	end
+
+	report.ok = (#report.missing == 0 and #report.different == 0)
+	return report
+end
+
+--------------------------------------------------------------------------
 -- Writing assignments
 --------------------------------------------------------------------------
 

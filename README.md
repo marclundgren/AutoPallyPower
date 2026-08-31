@@ -81,6 +81,7 @@ received.
 /app plan       solve the current raid and show the plan
 /app report     show what each player would end up with
 /app preview    show what applying would change
+/app verify     check what PallyPower actually holds
 /app apply      push the plan into PallyPower
 /app test 25 2 2 5      simulate a 25-man: 2 paladins, 2 tanks, 5 healers
 /app test off   back to the live raid
@@ -141,3 +142,20 @@ same version the game ships.
 ```
 
 No WoW client, and no group, required.
+
+## Confirming an override landed
+
+A greater blessing is visible on PallyPower's grid the moment it lands. A
+per-player override is not: it is one icon on one row of the pop-out player
+list for that class, so "did that actually work" is hard to answer by looking.
+
+`/app verify` reads PallyPower's live tables back and compares them to the
+plan, reporting anything missing or different by name. `/app apply` runs the
+same check automatically and says so.
+
+How PallyPower uses them: a paladin's client reads only its own row of
+`PallyPower_NormalAssignments`, and `GetSpellID` returns that override in place
+of the class-wide greater blessing for that one player. So the override changes
+what their own class button casts on that target -- a 10-minute normal
+blessing instead of the 30-minute greater one.
+

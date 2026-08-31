@@ -492,8 +492,13 @@ function UI:BuildPlan()
 	end, "primary")
 	pane.apply:SetPoint("LEFT", pane.preview, "RIGHT", 8, 0)
 
+	pane.verify = Theme:Button(pane, "Verify", 90, 24, function()
+		APP.Commands:Handle("verify")
+	end, "default")
+	pane.verify:SetPoint("LEFT", pane.apply, "RIGHT", 8, 0)
+
 	pane.applyNote = Theme:Text(pane, "meta", "", Theme.color.textFaint)
-	pane.applyNote:SetPoint("LEFT", pane.apply, "RIGHT", 12, 0)
+	pane.applyNote:SetPoint("LEFT", pane.verify, "RIGHT", 12, 0)
 end
 
 local function hideAll(list) for _, w in ipairs(list) do w:Hide() end end
@@ -516,6 +521,7 @@ function UI:RefreshPlan()
 		pane.notice:Show(); pane.hint:Show(); pane.goTest:Show()
 		Theme:SetEnabled(pane.preview, false)
 		Theme:SetEnabled(pane.apply, false)
+		Theme:SetEnabled(pane.verify, false)
 		pane.applyNote:SetText("")
 		return
 	end
@@ -547,6 +553,7 @@ function UI:RefreshPlan()
 
 	Theme:SetEnabled(pane.preview, not simulated)
 	Theme:SetEnabled(pane.apply, not simulated)
+	Theme:SetEnabled(pane.verify, not simulated)
 	pane.applyNote:SetText(simulated and "Disabled: this is a simulated raid." or "")
 
 	-- Who will not receive what we send, and why.
