@@ -109,6 +109,8 @@ function S:PrepareMembers(members, ctx, config)
 		prepared[#prepared + 1] = {
 			name = m.name,
 			class = m.class,
+			assignedRole = m.assignedRole,
+			guessed = P:IsGuess(m, config.playerProfileOverrides),
 			classID = B.CLASS_IDS[m.class],
 			tank = m.tank and true or false,
 			role = profile and profile.role or nil,

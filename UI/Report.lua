@@ -122,8 +122,11 @@ function Report:PerMember(result, opts)
 					end
 				end
 				local label = m.tank and C("tank", m.name .. " (tank)") or m.name
+				-- Mark where the profile was a class default rather than
+				-- something we actually knew.
+				local profileText = m.profileLabel .. (m.guessed and "  (guess)" or "")
 				add(("    %-24s %-20s %s"):format(
-					label, table.concat(got, " "), C("dim", m.profileLabel)))
+					label, table.concat(got, " "), C("dim", profileText)))
 			end
 		end
 	end

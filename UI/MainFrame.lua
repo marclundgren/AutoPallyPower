@@ -462,6 +462,17 @@ function UI:BuildPlan()
 	pane.warn.text:SetPoint("LEFT", pane.warn, "LEFT", 10, 0)
 	pane.warn:Hide()
 
+	-- Second notice line: a profile we had to guess at is the difference
+	-- between a plan being right and being plausible, so it says so rather
+	-- than leaving it to be inferred from the output.
+	pane.info = Theme:Card(pane, Theme.color.warn)
+	pane.info:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -96)
+	pane.info:SetPoint("RIGHT", pane, "RIGHT", -12, 0)
+	pane.info:SetHeight(28)
+	pane.info.text = Theme:Text(pane.info, "body", "", Theme.color.warn)
+	pane.info.text:SetPoint("LEFT", pane.info, "LEFT", 10, 0)
+	pane.info:Hide()
+
 	pane.notice = Theme:Text(pane, "heading", "", Theme.color.textDim)
 	pane.notice:SetPoint("CENTER", pane, "CENTER", 0, 26)
 	pane.notice:SetJustifyH("CENTER")
@@ -474,7 +485,7 @@ function UI:BuildPlan()
 	pane.goTest:SetPoint("TOP", pane.hint, "BOTTOM", 0, -12)
 
 	local scroll, content = Theme:ScrollList(pane, WIDTH - 60, HEIGHT - 220)
-	scroll:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -100)
+	scroll:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -132)
 	scroll:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", -12, 44)
 	pane.content = content
 	content.gridRows = {}
@@ -516,6 +527,7 @@ function UI:RefreshPlan()
 	if not simulated and not inGroup then
 		for _, tile in pairs(pane.stats) do tile.value:SetText("--") end
 		pane.warn:Hide()
+		pane.info:Hide()
 		pane.notice:SetText("Not in a group")
 		pane.hint:SetText("The plan needs a roster to solve against.\nPriorities and Test Mode work anywhere.")
 		pane.notice:Show(); pane.hint:Show(); pane.goTest:Show()
@@ -570,6 +582,26 @@ function UI:RefreshPlan()
 		pane.warn:Show()
 	else
 		pane.warn:Hide()
+	end
+
+	-- Anyone whose profile came from the class default rather than a role or a
+	-- known spec. Naming them is what makes a surprising plan explicable.
+	local guessed = {}
+	for _, m in ipairs(result.members) do
+		if m.guessed then guessed[#guessed + 1] = m.name end
+	end
+	if #guessed > 0 then
+		table.sort(guessed)
+		local shown = guessed
+		if #guessed > 6 then
+			shown = { unpack(guessed, 1, 6) }
+			shown[#shown + 1] = ("and %d more"):format(#guessed - 6)
+		end
+		pane.info.text:SetText(("No role or spec for %d player%s, using class defaults:  %s")
+			:format(#guessed, #guessed == 1 and "" or "s", table.concat(shown, ", ")))
+		pane.info:Show()
+	else
+		pane.info:Hide()
 	end
 
 	-- The grid, one row per paladin, one icon per class column.

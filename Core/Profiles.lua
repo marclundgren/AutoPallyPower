@@ -163,6 +163,31 @@ P.classFallback = {
 	SHAMAN  = "SHAMAN_RESTO",
 }
 
+-- Where a role is known but the spec is not. For classes whose DPS spec is
+-- ambiguous -- a druid could be feral or balance, a shaman enhancement or
+-- elemental -- pick the variant whose blessings serve both. Both want
+-- Salvation first; the second slot is Kings for the caster build and Might for
+-- the melee one, and Kings is useful to either, while Might is dead weight on
+-- a caster. So an unknown DPS druid is treated as balance.
+P.classHealerProfile = {
+	PRIEST  = "PRIEST_HEALER",
+	DRUID   = "DRUID_RESTO",
+	SHAMAN  = "SHAMAN_RESTO",
+	PALADIN = "PALADIN_HOLY",
+}
+
+P.classDpsProfile = {
+	WARRIOR = "WARRIOR_DPS",
+	ROGUE   = "ROGUE",
+	HUNTER  = "HUNTER",
+	MAGE    = "MAGE",
+	WARLOCK = "WARLOCK",
+	PRIEST  = "PRIEST_SHADOW",
+	DRUID   = "DRUID_BALANCE",
+	SHAMAN  = "SHAMAN_ELEMENTAL",
+	PALADIN = "PALADIN_RET",
+}
+
 -- When the raid marks someone as a tank, that beats any spec guess.
 P.classTankProfile = {
 	WARRIOR = "WARRIOR_TANK",
@@ -235,7 +260,26 @@ function P:ForMember(member, overrides)
 	if member.profile and self.defaults[member.profile] then
 		return member.profile
 	end
+	-- A role the player picked themselves beats a class-wide guess: it does not
+	-- pin the spec, but it does rule out most of the wrong answers.
+	if member.assignedRole == "HEALER" and self.classHealerProfile[member.class] then
+		return self.classHealerProfile[member.class]
+	end
+	if member.assignedRole == "DAMAGER" and self.classDpsProfile[member.class] then
+		return self.classDpsProfile[member.class]
+	end
 	return self.classFallback[member.class]
+end
+
+--- Did we actually know anything about this member, or fall back to the class?
+function P:IsGuess(member, overrides)
+	if overrides and overrides[member.name] then return false end
+	if member.tank then return false end
+	if member.profile and self.defaults[member.profile] then return false end
+	if member.assignedRole == "HEALER" or member.assignedRole == "DAMAGER" then
+		return false
+	end
+	return true
 end
 
 --------------------------------------------------------------------------
