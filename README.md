@@ -54,6 +54,27 @@ enough to actually use.
 
 Given the same raid, it always produces the same plan.
 
+## How a player's spec is decided
+
+The client offers no API for another player's talents, so a profile is resolved
+from the cheapest reliable signals first:
+
+1. a manual assignment you made — `/app override <player> <PROFILE>`
+2. their role: the raid's Main Tank / Main Assist slots, or the role they picked
+   in the group finder — which works in a party, where Main Tank slots do not
+   exist at all
+3. for paladins, their real spec — yours from your own talents, everyone else's
+   from PallyPower's sync
+4. the class default
+
+Anyone resolved by step 4 is named on the Raid Plan tab and marked `(guess)` in
+`/app report`, so a surprising assignment is explicable rather than mysterious.
+
+Where a role is known but the spec is not, and the class has both a melee and a
+caster DPS build, the caster profile is used. Both want Salvation first, and the
+second slot is then Kings — useful to either build, where Might would be dead
+weight on a caster.
+
 ## When your assignments will not stick
 
 Another paladin's client only accepts assignments you set for them if you are
