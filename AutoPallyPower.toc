@@ -2,7 +2,7 @@
 ## Title: AutoPallyPower
 ## Notes: Composition-aware blessing assignment for PallyPower.
 ## Author: marclundgren
-## Version: 0.1.0
+## Version: 0.2.0
 ## DefaultState: enabled
 ## Dependencies: PallyPower
 ## SavedVariables: AutoPallyPowerDB

@@ -3,7 +3,7 @@
 local ADDON, APP = ...
 
 APP.name = ADDON
-APP.version = "0.1.0"
+APP.version = "0.2.0"
 
 -- Subsystem tables.
 APP.Blessings = APP.Blessings or {}
