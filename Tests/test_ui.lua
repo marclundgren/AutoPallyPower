@@ -107,6 +107,16 @@ do
 	end
 	T.check("apply is blocked while simulated",
 		APP.MainFrame.planPane.apply:IsEnabled() == false)
+
+	-- Stat tiles should describe the raid actually being solved.
+	local stats = APP.MainFrame.planPane.stats
+	local raid = APP.Roster.simulated
+	local summary = APP.Roster:Summary(raid)
+	T.eq("raid size tile", stats.raid.value:GetText(), tostring(#raid.members))
+	T.eq("paladin tile", stats.paladins.value:GetText(), tostring(#raid.paladins))
+	T.eq("tank tile", stats.tanks.value:GetText(), tostring(summary.tanks))
+	T.eq("healer tile", stats.healers.value:GetText(), tostring(summary.healers))
+	T.check("healer count is not zero for a raid with healers", summary.healers > 0)
 end
 
 --------------------------------------------------------------------------

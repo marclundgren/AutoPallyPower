@@ -432,11 +432,12 @@ end
 --------------------------------------------------------------------------
 
 local STAT_KEYS = {
-	{ key = "raid",     caption = "RAID" },
-	{ key = "paladins", caption = "PALADINS" },
-	{ key = "holy",     caption = "HOLY" },
-	{ key = "prot",     caption = "PROT" },
-	{ key = "tanks",    caption = "TANKS" },
+	{ key = "raid",      caption = "RAID" },
+	{ key = "paladins",  caption = "PALADINS" },
+	{ key = "holy",      caption = "HOLY" },
+	{ key = "prot",      caption = "PROT" },
+	{ key = "tanks",     caption = "TANKS" },
+	{ key = "healers",   caption = "HEALERS" },
 	{ key = "overrides", caption = "OVERRIDES" },
 }
 
@@ -445,13 +446,18 @@ function UI:BuildPlan()
 	pane:Hide()
 	self.planPane = pane
 
+	-- Width is derived rather than fixed so the row always spans the pane, and
+	-- adding a tile does not silently push the last one off the edge.
 	pane.stats = {}
-	local x = 12
+	local margin, gap = 12, 6
+	local avail = WIDTH - 24 - margin * 2
+	local tileW = math.floor((avail - gap * (#STAT_KEYS - 1)) / #STAT_KEYS)
+	local x = margin
 	for _, spec in ipairs(STAT_KEYS) do
-		local tile = Theme:Stat(pane, 118, spec.caption, "--")
+		local tile = Theme:Stat(pane, tileW, spec.caption, "--")
 		tile:SetPoint("TOPLEFT", pane, "TOPLEFT", x, -12)
 		pane.stats[spec.key] = tile
-		x = x + 124
+		x = x + tileW + gap
 	end
 
 	pane.warn = Theme:Card(pane, Theme.color.bad)
@@ -548,11 +554,17 @@ function UI:RefreshPlan()
 		return
 	end
 
-	local tanks = 0
-	for _, m in ipairs(result.members) do if m.tank then tanks = tanks + 1 end end
+	local tanks, healers = 0, 0
+	for _, m in ipairs(result.members) do
+		if m.tank then tanks = tanks + 1 end
+		-- Counted from the profile the solver actually resolved, so the number
+		-- agrees with how they are being buffed rather than with their role.
+		if m.role == "HEALER" then healers = healers + 1 end
+	end
 	pane.stats.raid.value:SetText(tostring(#result.members))
 	pane.stats.paladins.value:SetText(tostring(#result.paladins))
 	pane.stats.tanks.value:SetText(tostring(tanks))
+	pane.stats.healers.value:SetText(tostring(healers))
 	pane.stats.overrides.value:SetText(tostring(#result.overrides))
 
 	local function yesNo(tile, on)
