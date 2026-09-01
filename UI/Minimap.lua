@@ -18,6 +18,7 @@ local function positionButton(button, angle)
 end
 
 local menuItems = {
+	{ text = "Open window",          cmd = "ui" },
 	{ text = "Plan current raid",    cmd = "plan" },
 	{ text = "Per-player result",    cmd = "report" },
 	{ text = "Preview changes",      cmd = "preview" },
@@ -74,7 +75,7 @@ function Minimap:Create()
 	button:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:AddLine("AutoPallyPower")
-		GameTooltip:AddLine("Left-click: plan the current raid", 1, 1, 1)
+		GameTooltip:AddLine("Left-click: open AutoPallyPower", 1, 1, 1)
 		GameTooltip:AddLine("Right-click: menu", 1, 1, 1)
 		if APP.Roster and APP.Roster:IsSimulated() then
 			GameTooltip:AddLine("Test mode is on", 1, 0.4, 0.4)
@@ -86,8 +87,8 @@ function Minimap:Create()
 	button:SetScript("OnClick", function(self, mouseButton)
 		if mouseButton == "RightButton" then
 			Minimap:ShowMenu(self)
-		else
-			APP.Commands:Handle("plan")
+		elseif APP.MainFrame then
+			APP.MainFrame:Toggle()
 		end
 	end)
 

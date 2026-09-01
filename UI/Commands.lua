@@ -34,6 +34,8 @@ end
 --- Solve whatever raid is current (live, or simulated in test mode).
 function Commands:Solve()
 	local db = APP.db
+	-- Cheap, and it means our own talents are never the stale part of a plan.
+	PP:ScanSelf()
 	local raid = R:Current(db.playerProfileOverrides)
 
 	if raid.empty then
@@ -54,6 +56,10 @@ end
 --------------------------------------------------------------------------
 
 local handlers = {}
+
+handlers.ui = function()
+	if APP.MainFrame then APP.MainFrame:Toggle() end
+end
 
 handlers.plan = function()
 	local result, err = Commands:Solve()
@@ -97,18 +103,100 @@ handlers.apply = function()
 	local ok, msg = PP:Assert()
 	if not ok then return out(msg) end
 
-	if #result.paladins > 1 and not PP:CanControlOthers() then
-		out("|cffff2020You are not raid leader or assistant.|r Other paladins' clients will")
-		out("ignore assignments you set for them. Your own row will still apply.")
-	end
-
 	local applied, message, stats = PP:Apply(result)
 	if not applied then return out(message) end
 
 	out(("Applied: %d paladin rows, %d greater blessing changes, %d overrides set, %d cleared.")
 		:format(stats.rows, stats.cells, stats.overrides, stats.cleared))
+
+	-- Read it straight back. An override is one icon on one row of a pop-out
+	-- list, so without this "did that work" is genuinely hard to answer.
+	local report = PP:Verify(result)
+	if report.ok then
+		out(("|cff1eff00Verified:|r %d greater cells, %d overrides now match the plan.")
+			:format(report.matchedGrid, report.matchedOverrides))
+	else
+		out(("|cffff2020Verify found %d missing and %d differing.|r Run /app verify for detail.")
+			:format(#report.missing, #report.different))
+	end
+
+	if stats.blocked and #stats.blocked > 0 then
+		out(("|cffff2020Skipped %d paladin(s)|r -- their client would have ignored it:")
+			:format(#stats.blocked))
+		for _, b in ipairs(stats.blocked) do
+			out(("   %s -- %s"):format(b.name, b.why))
+		end
+		out("|cff9d9d9dFix either way: get raid assist, or ask them to tick Free Assignment")
+		out("in PallyPower's own window. In a party only the party leader counts.|r")
+	end
 	if #result.warnings > 0 then
 		for _, w in ipairs(result.warnings) do out("|cffff2020" .. w .. "|r") end
+	end
+end
+
+handlers.refresh = function()
+	PP:ScanSelf()
+
+	-- Pull fresh talents and free-assign state from everyone. Their replies
+	-- land over the next second or so, so solve now for an immediate answer and
+	-- again once the responses have had time to arrive.
+	local asked = PP:RequestSync()
+
+	if APP.MainFrame then APP.MainFrame:RefreshNow() end
+
+	if asked then
+		out("Refreshed, and asked the group to resend their talents.")
+		if C_Timer and C_Timer.After then
+			C_Timer.After(2, function()
+				APP.SafeCall("refresh follow-up", function()
+					if APP.MainFrame then APP.MainFrame:RefreshNow() end
+				end)
+			end)
+		end
+	else
+		out("Refreshed.")
+	end
+end
+
+handlers.verify = function()
+	local ok, msg = PP:Assert()
+	if not ok then return out(msg) end
+	if R:IsSimulated() then
+		return out("Test mode is on; there is nothing live to verify against.")
+	end
+
+	local result, err = Commands:Solve()
+	if not result then return out(err) end
+
+	local report = PP:Verify(result)
+	out(("Verify: %d greater blessing cells and %d overrides match what PallyPower holds.")
+		:format(report.matchedGrid, report.matchedOverrides))
+
+	if #report.skipped > 0 then
+		out(("|cff9d9d9dNot checked (you cannot set them): %s|r")
+			:format(table.concat(report.skipped, ", ")))
+	end
+
+	for _, m in ipairs(report.missing) do
+		out(("|cffff2020missing|r  %s: %s on %s is not set")
+			:format(m.paladin, B:Name(m.blessing), m.target))
+	end
+	for _, d in ipairs(report.different) do
+		if d.kind == "override" then
+			out(("|cffff2020differs|r  %s: %s has %s, plan wants %s")
+				:format(d.paladin, d.target, B:Name(d.have), B:Name(d.want)))
+		else
+			out(("|cffff2020differs|r  %s: %s column has %s, plan wants %s")
+				:format(d.paladin, B.CLASS_BY_ID[d.classID] or d.classID,
+					B:Name(d.have), B:Name(d.want)))
+		end
+	end
+
+	if report.ok then
+		out("|cff1eff00Everything the plan asked for is in place.|r")
+		if report.matchedOverrides > 0 then
+			out("|cff9d9d9dOverrides show in PallyPower on the per-player pop-out for that class.|r")
+		end
 	end
 end
 
@@ -144,18 +232,6 @@ handlers.test = function(args)
 	out(("Test raid generated (seed %d): %d players, %d paladins, %d tanks, %d healers.")
 		:format(raid.seed, sum.size, sum.paladins, sum.tanks, sum.healers))
 	out("Run /app plan to see what it would assign.")
-end
-
-handlers.tankmode = function(args)
-	local db = APP.db
-	local mode = args[1]
-	if mode ~= "threat" and mode ~= "survival" then
-		return out(("Tank mode is '%s'. Use /app tankmode threat|survival."):format(db.tankPriority))
-	end
-	db.tankPriority = mode
-	out(("Tank mode set to '%s'. %s"):format(mode,
-		mode == "threat" and "Tanks favour Might/Sanctuary for threat."
-		or "Tanks favour Blessing of Light for survivability (needs a holy paladin)."))
 end
 
 handlers.protsalv = function(args)
@@ -264,35 +340,60 @@ end
 
 handlers.status = function()
 	local db = APP.db
+	PP:ScanSelf()
 	out(("PallyPower detected: %s"):format(PP:IsAvailable() and "yes" or "no"))
 	out(("Test mode: %s"):format(R:IsSimulated() and "on" or "off"))
-	out(("Tank mode: %s"):format(db.tankPriority))
 	out(("Priority grouping: %s"):format(db.railGrouping))
 	out(("Prot paladin Salvation rule: %s"):format(db.protPaladinSalvation and "on" or "off"))
 	out(("Pin mode: %s"):format(db.pinMode))
 	out(("Override threshold: %d"):format(db.overridePenalty))
 	local pallys = PP:GetPaladins()
+	local inGroup = (_G.GetNumGroupMembers and _G.GetNumGroupMembers() or 0) > 0
 	out(("Paladins known to PallyPower: %d"):format(#pallys))
+	if not inGroup then
+		-- PallyPower only broadcasts while grouped, so out of a group this list
+		-- is whatever it remembered from previous raids, not who is with you.
+		out("|cff9d9d9d  (remembered from previous raids -- PallyPower only syncs while grouped)|r")
+	end
+	out(("Your authority: %s"):format(PP:HaveAuthority()
+		and "|cff1eff00leader or assistant -- you can set anyone|r"
+		or "|cffff2020none -- you can only set paladins with Free Assignment on|r"))
+
 	for _, p in ipairs(pallys) do
 		local caps = {}
 		for _, b in ipairs(B.ALL) do
 			if p.canCast[b] then caps[#caps + 1] = B:Short(b) end
 		end
+		local note = ""
+		if p.name == PP.selfName then
+			note = "  |cff1eff00(you, read from your spellbook)|r"
+		elseif not p.capabilitiesKnown then
+			note = "  |cff9d9d9d(assumed -- not synced yet)|r"
+		end
 		out(("  %s  spec=%s  can cast: %s%s"):format(
-			p.name, p.spec, table.concat(caps, " "),
-			p.capabilitiesKnown and "" or "  |cff9d9d9d(assumed)|r"))
+			p.name, p.spec, table.concat(caps, " "), note))
+
+		if p.name ~= PP.selfName then
+			local mark = p.canControl and "|cff1eff00can set|r" or "|cffff2020cannot set|r"
+			out(("      PallyPower: %s   free assign: %s   %s -- %s"):format(
+				p.hasPallyPower and "yes" or "|cffff2020not seen|r",
+				p.freeAssign == true and "on" or (p.freeAssign == false and "off" or "unknown"),
+				mark, p.controlWhy))
+		end
 	end
 end
 
 handlers.help = function()
 	out("AutoPallyPower commands:")
+	out("  /app                         open the window")
 	out("  /app plan                    solve the current raid and show the plan")
 	out("  /app report                  show what each player would end up with")
 	out("  /app preview                 show what applying would change")
+	out("  /app verify                  check what PallyPower actually holds")
+	out("  /app refresh                 recalculate, and resync the group")
 	out("  /app apply                   push the plan into PallyPower")
 	out("  /app test [n] [pal] [tank] [heal] [seed]   simulate a raid")
 	out("  /app test off                back to the live raid")
-	out("  /app tankmode threat|survival")
 	out("  /app grouping class|role         how the priority list is grouped")
 	out("  /app protsalv on|off             prot paladin tank carries Salvation")
 	out("  /app pinmode preference|hard     how strictly pins are held")
@@ -311,14 +412,16 @@ function Commands:Handle(input)
 	for word in input:gmatch("%S+") do parts[#parts + 1] = word end
 
 	local cmd = table.remove(parts, 1)
-	if not cmd or cmd == "" then cmd = "plan" end
+	-- Bare /app opens the window; the text commands stay for when you want
+	-- output you can paste somewhere.
+	if not cmd or cmd == "" then cmd = "ui" end
 
 	local handler = handlers[cmd:lower()]
 	if not handler then
 		out(("Unknown command '%s'."):format(cmd))
 		return handlers.help()
 	end
-	handler(parts)
+	APP.SafeCall("/app " .. cmd, handler, parts)
 end
 
 --------------------------------------------------------------------------
@@ -328,8 +431,14 @@ end
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("CHAT_MSG_ADDON")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("SPELLS_CHANGED")
+frame:RegisterEvent("CHARACTER_POINTS_CHANGED")
+frame:RegisterEvent("GROUP_ROSTER_UPDATE")
+frame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
 
 frame:SetScript("OnEvent", function(_, event, arg1, ...)
+	return APP.SafeCall("event " .. tostring(event), function(...)
 	if event == "ADDON_LOADED" and arg1 == ADDON then
 		Config:Load()
 
@@ -345,6 +454,10 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
 		SLASH_AUTOPALLYPOWER2 = "/autopallypower"
 		SlashCmdList["AUTOPALLYPOWER"] = function(msg) Commands:Handle(msg) end
 
+		-- Read our own talents straight away rather than waiting for the first
+		-- world event, so /app status is right the moment the addon loads.
+		PP:ScanSelf()
+
 		if APP.Minimap then APP.Minimap:Create() end
 
 		if not PP:IsAvailable() then
@@ -356,5 +469,16 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
 	elseif event == "CHAT_MSG_ADDON" then
 		local prefix, message, channel, sender = arg1, ...
 		PP:OnAddonMessage(prefix, message, channel, sender)
+
+	elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED" then
+		-- Someone joined, left, or changed role. These fire in bursts, so the
+		-- refresh is coalesced rather than run once per event.
+		if APP.MainFrame then APP.MainFrame:ScheduleRefresh() end
+
+	else
+		-- Talents and spellbook can both change under us; rescanning is cheap.
+		PP:ScanSelf()
+		if APP.MainFrame then APP.MainFrame:ScheduleRefresh() end
 	end
+	end, ...)
 end)

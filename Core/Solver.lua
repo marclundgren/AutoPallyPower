@@ -76,7 +76,6 @@ local function defaultConfig()
 	return {
 		weights = S.DEFAULT_WEIGHTS,
 		overridePenalty = S.DEFAULT_OVERRIDE_PENALTY,
-		tankPriority = "threat",
 		profiles = P.defaults,
 		playerProfileOverrides = {},
 		pins = {},
@@ -102,7 +101,6 @@ function S:BuildContext(paladins, config)
 	return {
 		holyPaladin = holy,
 		protPaladin = prot,
-		tankPriority = config.tankPriority or "threat",
 	}
 end
 
@@ -127,6 +125,8 @@ function S:PrepareMembers(members, ctx, config)
 		prepared[#prepared + 1] = {
 			name = m.name,
 			class = m.class,
+			assignedRole = m.assignedRole,
+			guessed = P:IsGuess(m, config.playerProfileOverrides),
 			classID = B.CLASS_IDS[m.class],
 			tank = m.tank and true or false,
 			raidRole = m.raidRole,

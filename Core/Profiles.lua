@@ -7,10 +7,11 @@
 -- actually casting Holy Light on the target, and Sanctuary cannot be cast at
 -- all without a Protection-talented paladin present.
 --
--- Tank profiles carry two orderings. Whether a tank wants threat or survival
--- out of their second blessing is a real judgement call that changes per guild
--- and per fight, so it is a setting (opt.tankPriority) rather than a baked-in
--- answer.
+-- There is one ordering per profile. An earlier version carried a second
+-- "survival" ordering for tanks behind a toggle; it applied to tanks only,
+-- doubled the data, and made it ambiguous which list you were editing. A guild
+-- that wants a survival-first tank list can simply order it that way, or keep
+-- one as a preset.
 local ADDON, APP = ...
 
 local B = APP.Blessings
@@ -119,33 +120,32 @@ P.defaults = {
 	WARRIOR_TANK = {
 		label = "Warrior - Protection", class = "WARRIOR", role = "TANK", tank = true,
 		priority         = { KINGS, MIGHT, cond(LIGHT, HOLY), cond(SANCTUARY, PROT) },
-		prioritySurvival = { KINGS, cond(LIGHT, HOLY), MIGHT, cond(SANCTUARY, PROT) },
+		priority = { KINGS, cond(LIGHT, HOLY), MIGHT, cond(SANCTUARY, PROT) },
 	},
 	DRUID_TANK = {
 		label = "Druid - Feral (Tank)", class = "DRUID", role = "TANK", tank = true,
 		-- Wisdom is genuinely wanted but low: ferals powershift out of form
 		-- for the occasional cast and need a trickle of mana for it.
 		priority         = { KINGS, MIGHT, cond(LIGHT, HOLY), WISDOM },
-		prioritySurvival = { KINGS, cond(LIGHT, HOLY), MIGHT, WISDOM },
+		priority = { KINGS, cond(LIGHT, HOLY), MIGHT, WISDOM },
 	},
 	PALADIN_TANK = {
 		label = "Paladin - Protection", class = "PALADIN", role = "TANK", tank = true,
-		-- Sanctuary holds the second slot in both modes: it is simultaneously
-		-- the threat option and a damage reduction, so it does not trade off
-		-- against survival the way Might does.
+		-- Sanctuary sits second because it is simultaneously the threat option
+		-- and a damage reduction, so it does not trade off the way Might does.
 		priority         = { KINGS, cond(SANCTUARY, PROT), cond(LIGHT, HOLY), WISDOM },
-		prioritySurvival = { KINGS, cond(SANCTUARY, PROT), cond(LIGHT, HOLY), WISDOM },
+		priority = { KINGS, cond(SANCTUARY, PROT), cond(LIGHT, HOLY), WISDOM },
 	},
 	-- Caster tanking is rare but real (spellsteal mages, warlock tanks).
 	MAGE_TANK = {
 		label = "Mage - Tank", class = "MAGE", role = "TANK", tank = true,
 		priority         = { KINGS, WISDOM, cond(LIGHT, HOLY) },
-		prioritySurvival = { KINGS, cond(LIGHT, HOLY), WISDOM },
+		priority = { KINGS, cond(LIGHT, HOLY), WISDOM },
 	},
 	WARLOCK_TANK = {
 		label = "Warlock - Tank", class = "WARLOCK", role = "TANK", tank = true,
 		priority         = { KINGS, WISDOM, cond(LIGHT, HOLY) },
-		prioritySurvival = { KINGS, cond(LIGHT, HOLY), WISDOM },
+		priority = { KINGS, cond(LIGHT, HOLY), WISDOM },
 	},
 }
 
@@ -161,6 +161,31 @@ P.classFallback = {
 	MAGE    = "MAGE",
 	WARLOCK = "WARLOCK",
 	SHAMAN  = "SHAMAN_RESTO",
+}
+
+-- Where a role is known but the spec is not. For classes whose DPS spec is
+-- ambiguous -- a druid could be feral or balance, a shaman enhancement or
+-- elemental -- pick the variant whose blessings serve both. Both want
+-- Salvation first; the second slot is Kings for the caster build and Might for
+-- the melee one, and Kings is useful to either, while Might is dead weight on
+-- a caster. So an unknown DPS druid is treated as balance.
+P.classHealerProfile = {
+	PRIEST  = "PRIEST_HEALER",
+	DRUID   = "DRUID_RESTO",
+	SHAMAN  = "SHAMAN_RESTO",
+	PALADIN = "PALADIN_HOLY",
+}
+
+P.classDpsProfile = {
+	WARRIOR = "WARRIOR_DPS",
+	ROGUE   = "ROGUE",
+	HUNTER  = "HUNTER",
+	MAGE    = "MAGE",
+	WARLOCK = "WARLOCK",
+	PRIEST  = "PRIEST_SHADOW",
+	DRUID   = "DRUID_BALANCE",
+	SHAMAN  = "SHAMAN_ELEMENTAL",
+	PALADIN = "PALADIN_RET",
 }
 
 -- When the raid marks someone as a tank, that beats any spec guess.
@@ -190,7 +215,7 @@ end
 
 --- Resolve a profile into a flat, ordered blessing list for the current raid.
 -- @param profile  a table from P.defaults (or a user-edited copy)
--- @param ctx      { holyPaladin = bool, protPaladin = bool, tankPriority = "threat"|"survival" }
+-- @param ctx      { holyPaladin = bool, protPaladin = bool }
 -- @return array of blessing ids, best first, with unsatisfied conditions removed
 function P:Resolve(profile, ctx)
 	ctx = ctx or {}
@@ -200,9 +225,6 @@ function P:Resolve(profile, ctx)
 	}
 
 	local source = profile.priority
-	if profile.tank and ctx.tankPriority == "survival" and profile.prioritySurvival then
-		source = profile.prioritySurvival
-	end
 
 	local out, seen = {}, {}
 	for i = 1, #source do
@@ -238,18 +260,37 @@ function P:ForMember(member, overrides)
 	if member.profile and self.defaults[member.profile] then
 		return member.profile
 	end
+	-- A role the player picked themselves beats a class-wide guess: it does not
+	-- pin the spec, but it does rule out most of the wrong answers.
+	if member.assignedRole == "HEALER" and self.classHealerProfile[member.class] then
+		return self.classHealerProfile[member.class]
+	end
+	if member.assignedRole == "DAMAGER" and self.classDpsProfile[member.class] then
+		return self.classDpsProfile[member.class]
+	end
 	return self.classFallback[member.class]
+end
+
+--- Did we actually know anything about this member, or fall back to the class?
+function P:IsGuess(member, overrides)
+	if overrides and overrides[member.name] then return false end
+	if member.tank then return false end
+	if member.profile and self.defaults[member.profile] then return false end
+	if member.assignedRole == "HEALER" or member.assignedRole == "DAMAGER" then
+		return false
+	end
+	return true
 end
 
 --------------------------------------------------------------------------
 -- Grouping for the priority list UI
 --------------------------------------------------------------------------
 
--- Two ways to organise twenty profiles. Grouping by class matches the raid
--- grid and is how you think when one person's buffs look wrong; grouping by
--- role matches how the priorities are actually written, since every healer
--- shares a list. Which is better in practice is an open question, so it is a
--- setting rather than a decision.
+-- Two ways to organise twenty profiles. Grouping by role matches how the
+-- priorities are actually written -- every healer shares a list -- so it is
+-- the default and the one to use when editing policy. Grouping by class
+-- mirrors the raid grid instead, which is what you want when one particular
+-- player's buffs look wrong. Both are useful, so it stays a setting.
 P.CLASS_ORDER = { "WARRIOR", "ROGUE", "PRIEST", "DRUID", "PALADIN", "HUNTER", "MAGE", "WARLOCK", "SHAMAN" }
 
 P.CLASS_LABELS = {
@@ -282,7 +323,9 @@ end
 -- @return array of { key, label, items = { { key, profile, label, tank } } }
 function P:GroupedList(mode, profiles)
 	profiles = profiles or self.defaults
-	mode = (mode == "role") and "role" or "class"
+	-- Role is the fallback as well as the saved default, so a caller that
+	-- forgets to pass a mode gets the same list the settings would have given.
+	mode = (mode == "class") and "class" or "role"
 
 	local classRank = {}
 	for i, class in ipairs(self.CLASS_ORDER) do classRank[class] = i end

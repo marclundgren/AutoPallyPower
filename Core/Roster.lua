@@ -6,12 +6,15 @@
 -- reliable signals first and only guess as a last resort:
 --
 --   1. a manual assignment the user made (remembered per character)
---   2. the raid's own MAINTANK / MAINASSIST slots, which are authoritative
---   3. the class fallback profile
+--   2. their assigned role, from the raid's MAINTANK / MAINASSIST slots or the
+--      role they picked in the group finder
+--   3. for paladins, their actual spec -- ours from our own talents, everyone
+--      else's from PallyPower's sync
+--   4. the class fallback profile
 --
--- Getting a tank wrong is the expensive error -- it is the difference between
--- a tank holding Salvation and not -- and step 2 covers exactly that case
--- without guessing, which is why it is worth leaning on.
+-- Getting a tank wrong is the expensive error: it is the difference between a
+-- tank holding Salvation and not. Roles cover that without guessing, and
+-- crucially they work in a party, where MAINTANK slots do not exist at all.
 local ADDON, APP = ...
 
 local B = APP.Blessings
@@ -44,37 +47,66 @@ function R:ScanLive(savedProfiles)
 
 	local inRaid = _G.IsInRaid and _G.IsInRaid()
 
+	--- The role a player picked in the group finder. Present in a party as well
+	-- as a raid, which is the whole reason to consult it: MAINTANK slots are a
+	-- raid-only concept, so without this a tank in a 5-man is invisible.
+	local function assignedRole(unit)
+		if not unit or not _G.UnitGroupRolesAssigned then return nil end
+		local role = _G.UnitGroupRolesAssigned(unit)
+		if role == "NONE" then return nil end
+		return role
+	end
+
+	--- For a paladin we can know the spec exactly rather than guessing: our own
+	-- from our talent points, everyone else's from PallyPower's broadcast.
+	local PALADIN_SPEC_PROFILE = {
+		HOLY = "PALADIN_HOLY", PROT = "PALADIN_TANK", RET = "PALADIN_RET",
+	}
+	local function paladinProfile(name, class)
+		if class ~= "PALADIN" then return nil end
+		local spec = APP.PP:InferSpec(name)
+		return PALADIN_SPEC_PROFILE[spec]
+	end
+
+	local function addMember(name, class, unit, opts)
+		if not name or not class then return end
+		name = name:match("^([^-]+)") or name
+		opts = opts or {}
+
+		local role = assignedRole(unit)
+		local profile = (savedProfiles and savedProfiles[name]) or paladinProfile(name, class)
+
+		-- A protection paladin is tanking, whether or not they set a role.
+		local specTank = (profile == "PALADIN_TANK")
+
+		members[#members + 1] = {
+			name = name,
+			class = class,
+			subgroup = opts.subgroup,
+			tank = opts.raidTank or (role == "TANK") or specTank or false,
+			assignedRole = role,
+			profile = profile,
+			raidRole = opts.raidRole,
+			unit = unit,
+		}
+	end
+
 	if inRaid then
 		for i = 1, numMembers do
 			local name, _, subgroup, _, _, class, _, _, _, role = _G.GetRaidRosterInfo(i)
-			if name then
-				name = name:match("^([^-]+)") or name
-				local isTank = (role == "MAINTANK") or (role == "MAINASSIST")
-				members[#members + 1] = {
-					name = name,
-					class = class,
-					subgroup = subgroup,
-					tank = isTank,
-					profile = savedProfiles and savedProfiles[name] or nil,
-					raidRole = role,
-				}
-			end
+			addMember(name, class, "raid" .. i, {
+				subgroup = subgroup,
+				raidRole = role,
+				raidTank = (role == "MAINTANK") or (role == "MAINASSIST"),
+			})
 		end
 	else
 		local units = { "player" }
 		for i = 1, 4 do units[#units + 1] = "party" .. i end
 		for _, unit in ipairs(units) do
 			if _G.UnitExists(unit) then
-				local name = _G.GetUnitName(unit, false)
 				local _, class = _G.UnitClass(unit)
-				if name and class then
-					members[#members + 1] = {
-						name = name,
-						class = class,
-						tank = false,
-						profile = savedProfiles and savedProfiles[name] or nil,
-					}
-				end
+				addMember(_G.GetUnitName(unit, false), class, unit)
 			end
 		end
 	end

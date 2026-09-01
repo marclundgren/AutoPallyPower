@@ -9,6 +9,42 @@ local B = APP.Blessings
 local P = APP.Profiles
 local T = APP.TestRaid
 
+-- A seed source that works in both worlds. WoW's Lua sandbox has no `os`
+-- table, so os.time() throws in game -- and the client swallows the error, so
+-- the symptom is a command that silently does nothing.
+--- A seeded generator of our own.
+--
+-- WoW's Lua has math.random but not math.randomseed -- of the 91 addons
+-- installed alongside this one, 48 call math.random and none call
+-- math.randomseed. Without seeding, math.random cannot give a reproducible
+-- raid, which is the whole point of showing you a seed.
+--
+-- This is the Park-Miller minimal standard generator. It is not a good source
+-- of randomness and does not need to be; it needs to produce the same raid
+-- from the same seed on every machine, which math.random cannot promise even
+-- where seeding exists.
+local function makeRng(seed)
+	local state = math.floor(seed) % 2147483647
+	if state <= 0 then state = state + 2147483646 end
+	return function(n)
+		state = (state * 16807) % 2147483647
+		if n then
+			return (state % n) + 1
+		end
+		return state / 2147483647
+	end
+end
+
+local seedCounter = 0
+local function nowSeed()
+	if _G.time then return _G.time() end
+	if _G.GetTime then return math.floor(_G.GetTime() * 1000) end
+	-- Outside the game there is no clock worth consulting, so walk a counter:
+	-- successive calls still differ, and a test run stays reproducible.
+	seedCounter = seedCounter + 1
+	return 20260829 + seedCounter
+end
+
 T.defaults = {
 	raidSize = 25,
 	paladins = 2,
@@ -69,7 +105,7 @@ T.talentRates = {
 -- Mirrors the shape PallyPower reports: which blessings are in the spellbook,
 -- plus talent points for the three improved blessings it broadcasts.
 function T:PaladinCapabilities(spec, rng)
-	rng = rng or function(n) return math.random(n) end
+	rng = rng or makeRng(nowSeed())
 	local function chance(pct) return pct and rng(100) <= pct end
 
 	local caps = {
@@ -108,12 +144,8 @@ function T:Generate(opts)
 	for k, v in pairs(self.defaults) do cfg[k] = v end
 	for k, v in pairs(opts) do cfg[k] = v end
 
-	local seed = cfg.seed or os.time()
-	math.randomseed(seed)
-	-- Lua 5.1's first few draws after a seed are poorly distributed on some
-	-- platforms; burn a handful.
-	for _ = 1, 5 do math.random() end
-	local rng = function(n) return math.random(n) end
+	local seed = cfg.seed or nowSeed()
+	local rng = makeRng(seed)
 
 	local used = {}
 	local members, paladins = {}, {}

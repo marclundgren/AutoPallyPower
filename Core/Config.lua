@@ -19,13 +19,12 @@ Config.copy = copy
 
 function Config:Defaults()
 	return {
-		version = 1,
+		version = 3,
 		-- The user's editable copy of the priority lists. Shipped defaults stay in
 		-- APP.Profiles.defaults so "reset" always has something to reset to.
 		profiles = copy(P.defaults),
 		-- name -> profile key, for players whose spec we cannot detect.
 		playerProfileOverrides = {},
-		tankPriority = "threat",
 		-- Pins: one paladin held to one blessing across every class column.
 		-- "preference" lets the solver overrule a pin when a column clearly
 		-- wants otherwise; "hard" means the pinned paladin casts that blessing
@@ -36,7 +35,9 @@ function Config:Defaults()
 		-- A protection paladin who is tanking carries Salvation for the raid.
 		protPaladinSalvation = true,
 		-- How the priority list groups its profiles: "class" or "role".
-		railGrouping = "class",
+		-- Role is the default: the priorities are written per role, so the
+		-- list reads the way the policy was actually decided.
+		railGrouping = "role",
 		overridePenalty = S.DEFAULT_OVERRIDE_PENALTY,
 		weights = copy(S.DEFAULT_WEIGHTS),
 		minimap = { angle = 210, hide = false },
@@ -68,6 +69,32 @@ function Config:Load()
 		for k, v in pairs(defaults) do
 			if db[k] == nil then db[k] = v end
 		end
+		-- Migrations. Saved settings survive a default change, which is right
+		-- for anything the user chose -- but nobody ever chose class grouping,
+		-- it was simply the old default, so move those copies across.
+		if (db.version or 1) < 2 then
+			db.railGrouping = "role"
+			db.version = 2
+		end
+
+		if (db.version or 1) < 3 then
+			-- The threat/survival toggle is gone. Whichever ordering was in
+			-- force is the one the user was actually looking at and editing,
+			-- so that is the one that survives.
+			if db.tankPriority == "survival" then
+				for _, profile in pairs(db.profiles or {}) do
+					if type(profile) == "table" and profile.prioritySurvival then
+						profile.priority = profile.prioritySurvival
+					end
+				end
+			end
+			for _, profile in pairs(db.profiles or {}) do
+				if type(profile) == "table" then profile.prioritySurvival = nil end
+			end
+			db.tankPriority = nil
+			db.version = 3
+		end
+
 		if type(db.profiles) ~= "table" then db.profiles = copy(P.defaults) end
 		-- Any profile we ship that the saved copy has never seen.
 		for key, profile in pairs(P.defaults) do
@@ -85,7 +112,6 @@ function Config:SolverConfig()
 	local db = APP.db or self:Load()
 
 	local profiles = db.profiles
-	local tankPriority = db.tankPriority
 
 	local preset = db.activePreset and db.presets[db.activePreset]
 	if preset then
@@ -95,13 +121,11 @@ function Config:SolverConfig()
 		for key, profile in pairs(preset.profiles or {}) do
 			profiles[key] = profile
 		end
-		if preset.tankPriority then tankPriority = preset.tankPriority end
 	end
 
 	return {
 		weights = db.weights,
 		overridePenalty = db.overridePenalty,
-		tankPriority = tankPriority,
 		profiles = profiles,
 		playerProfileOverrides = db.playerProfileOverrides,
 		pins = db.pins,
@@ -112,11 +136,10 @@ function Config:SolverConfig()
 end
 
 --- Save the current raid's assignments as a named preset mutation.
-function Config:SavePreset(name, profiles, tankPriority)
+function Config:SavePreset(name, profiles)
 	local db = APP.db or self:Load()
 	db.presets[name] = {
 		profiles = profiles and copy(profiles) or {},
-		tankPriority = tankPriority,
 		created = time and time() or 0,
 	}
 end

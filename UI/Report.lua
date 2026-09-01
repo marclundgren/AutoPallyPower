@@ -49,10 +49,9 @@ function Report:Plan(result, opts)
 	add(C("head", "AutoPallyPower plan"))
 	add(("  %d paladins: %s"):format(#result.paladins,
 		#pallyNames > 0 and table.concat(pallyNames, ", ") or "none"))
-	add(("  holy paladin: %s   prot paladin: %s   tank mode: %s"):format(
+	add(("  holy paladin: %s   prot paladin: %s"):format(
 		result.context.holyPaladin and "yes" or "no",
-		result.context.protPaladin and "yes" or "no",
-		result.context.tankPriority))
+		result.context.protPaladin and "yes" or "no"))
 	if result.appliedRules and #result.appliedRules > 0 then
 		add(C("head", ("Rules in force (%s)"):format(result.pinMode or "preference")))
 		for _, rule in ipairs(result.appliedRules) do
@@ -130,8 +129,11 @@ function Report:PerMember(result, opts)
 					end
 				end
 				local label = m.tank and C("tank", m.name .. " (tank)") or m.name
+				-- Mark where the profile was a class default rather than
+				-- something we actually knew.
+				local profileText = m.profileLabel .. (m.guessed and "  (guess)" or "")
 				add(("    %-24s %-20s %s"):format(
-					label, table.concat(got, " "), C("dim", m.profileLabel)))
+					label, table.concat(got, " "), C("dim", profileText)))
 			end
 		end
 	end
