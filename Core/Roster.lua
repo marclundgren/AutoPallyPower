@@ -155,3 +155,63 @@ function R:Summary(raid)
 		classCounts = counts,
 	}
 end
+
+--- Who is in the raid, grouped by role, with each player's class and spec.
+--
+-- Works for a live group and a generated one alike. For a live raid a spec we
+-- had to guess at is flagged, because "why is that druid getting Might" is
+-- almost always answered by "we guessed their spec wrong".
+--
+-- @param raid      { members = {...} }
+-- @param overrides optional manual profile assignments
+-- @return array of { key, label, rows = { {...} } } in tank, healer, melee, caster order
+function R:Breakdown(raid, overrides)
+	local buckets = {}
+	for _, key in ipairs(P.ROLE_ORDER) do buckets[key] = {} end
+
+	local classRank = {}
+	for i, class in ipairs(P.CLASS_ORDER) do classRank[class] = i end
+
+	for _, m in ipairs(raid.members or {}) do
+		local key = P:ForMember(m, overrides)
+		local profile = P.defaults[key]
+		local roleKey = profile and profile.role or "MELEE"
+		local bucket = buckets[roleKey] or buckets.MELEE
+
+		bucket[#bucket + 1] = {
+			name = m.name,
+			class = m.class,
+			classLabel = P.CLASS_LABELS[m.class] or m.class,
+			classID = B.CLASS_IDS[m.class],
+			spec = profile and P:SpecLabel(profile) or "Unknown",
+			profileKey = key,
+			roleKey = roleKey,
+			tank = m.tank and true or false,
+			-- Main tank and off-tank both count as tanks for blessings, but the
+			-- distinction decides which paladin carries a pinned blessing, so it
+			-- is worth seeing.
+			raidRole = m.raidRole,
+			mainTank = (m.raidRole == "MAINTANK"),
+			guessed = P:IsGuess(m, overrides),
+			isPaladin = (m.class == "PALADIN"),
+		}
+	end
+
+	local out = {}
+	for _, key in ipairs(P.ROLE_ORDER) do
+		local rows = buckets[key]
+		if #rows > 0 then
+			table.sort(rows, function(a, b)
+				-- Main tanks lead their group; otherwise class order, then name,
+				-- so the same raid always reads the same way.
+				if a.mainTank ~= b.mainTank then return a.mainTank end
+				local ra = classRank[a.class] or 99
+				local rb = classRank[b.class] or 99
+				if ra ~= rb then return ra < rb end
+				return a.name < b.name
+			end)
+			out[#out + 1] = { key = key, label = P.ROLE_LABELS[key], rows = rows }
+		end
+	end
+	return out
+end

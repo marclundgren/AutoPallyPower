@@ -79,6 +79,65 @@ do
 		T.check("the panel shows a reproducible seed",
 			(APP.MainFrame.testPane.seed:GetText() or ""):find("Seed") ~= nil)
 
+		-- The roster list is the point of generating a raid you cannot see:
+		-- a count in the status line does not tell you who is in it.
+		local content = APP.MainFrame.testPane.rosterContent
+		T.check("the roster list exists", content ~= nil)
+		if content and raid then
+			local shownRows, shownHeads = 0, 0
+			for _, row in ipairs(content.rosterRows) do
+				if row:IsShown() then shownRows = shownRows + 1 end
+			end
+			for _, head in ipairs(content.rosterHeads) do
+				if head:IsShown() then shownHeads = shownHeads + 1 end
+			end
+			T.eq("one row per raider", shownRows, #raid.members)
+			T.check("role headings are drawn", shownHeads > 0 and shownHeads <= 4,
+				tostring(shownHeads))
+			T.check("the list is taller than a single row", content:GetHeight() > 40)
+
+			-- Each visible row must actually say something.
+			local blank = 0
+			for _, row in ipairs(content.rosterRows) do
+				if row:IsShown() then
+					local name = row.name:GetText() or ""
+					local class = row.class:GetText() or ""
+					local spec = row.spec:GetText() or ""
+					if name == "" or class == "" or spec == "" then blank = blank + 1 end
+				end
+			end
+			T.eq("no roster row is blank", blank, 0)
+
+			-- And the main tank has to be findable, since it decides who
+			-- carries a pinned blessing.
+			local mtMarked = false
+			for _, row in ipairs(content.rosterRows) do
+				if row:IsShown() and (row.marks:GetText() or ""):find("MAIN TANK") then
+					mtMarked = true
+				end
+			end
+			local hasMT = false
+			for _, m in ipairs(raid.members) do
+				if m.raidRole == "MAINTANK" then hasMT = true end
+			end
+			T.eq("a main tank in the raid is marked in the list", mtMarked, hasMT)
+		end
+
+		-- Leaving test mode must clear the list rather than strand a roster
+		-- for a raid that no longer exists.
+		APP.Commands:Handle("test off")
+		APP.MainFrame:RefreshTest()
+		local stillShown = 0
+		for _, row in ipairs(APP.MainFrame.testPane.rosterContent.rosterRows) do
+			if row:IsShown() then stillShown = stillShown + 1 end
+		end
+		T.eq("the roster clears when test mode ends", stillShown, 0)
+		T.check("the roster heading hides too",
+			not APP.MainFrame.testPane.rosterLabel:IsShown())
+
+		-- Put it back so the rest of this block sees what it expects.
+		stub.click(generate)
+
 		local said = false
 		for i = before + 1, #chat do
 			if tostring(chat[i]):find("Test raid generated") then said = true end
@@ -124,8 +183,10 @@ print("== every slash command runs without erroring ==")
 do
 	local handler = _G.SlashCmdList["AUTOPALLYPOWER"]
 	for _, cmd in ipairs({ "", "help", "status", "plan", "report", "grouping role",
-	                       "grouping class", "test 25 2 2 5", "test off", "preview",
-	                       "override", "nonsense" }) do
+	                       "grouping class", "test 25 2 2 5", "roster", "test off",
+	                       "roster", "preview", "protsalv on", "protsalv off",
+	                       "pinmode hard", "pinmode preference", "pin", "override",
+	                       "nonsense" }) do
 		local before = #chat
 		local ok, err = pcall(handler, cmd)
 		T.check("/app " .. cmd .. " does not error", ok, tostring(err))

@@ -19,6 +19,8 @@ load("Core/Profiles.lua")
 load("Core/Rules.lua")
 load("Core/Solver.lua")
 load("Core/TestRaid.lua")
+-- Pure at load time; its WoW calls all sit inside functions.
+load("Core/Roster.lua")
 -- Pure at load time: the adapter only touches WoW globals inside its functions.
 load("Integration/PallyPower.lua")
 load("Core/Config.lua")

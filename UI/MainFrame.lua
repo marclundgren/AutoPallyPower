@@ -865,10 +865,104 @@ function UI:BuildTest()
 	pane.leave:SetPoint("LEFT", pane.solve, "RIGHT", 8, 0)
 
 	pane.status = Theme:Text(pane, "body", "", Theme.color.textDim)
-	pane.status:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -234)
+	pane.status:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -232)
 
 	pane.seed = Theme:Text(pane, "meta", "", Theme.color.textFaint)
-	pane.seed:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -254)
+	pane.seed:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -250)
+
+	pane.rosterLabel = Theme:Text(pane, "label", "ROSTER", Theme.color.textFaint)
+	pane.rosterLabel:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -276)
+
+	local scroll, content = Theme:ScrollList(pane, WIDTH - 60, 200)
+	scroll:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -294)
+	scroll:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", -12, 12)
+	pane.rosterContent = content
+	content.rosterRows = {}
+	content.rosterHeads = {}
+end
+
+--- One line per raider: who they are, and what the solver thinks they are.
+-- Grouped by role because that is the shape of the question being asked of a
+-- generated raid -- how many tanks, how many casters -- and a flat list of
+-- twenty-five names does not answer it.
+function UI:RefreshRoster()
+	local pane = self.testPane
+	local content = pane and pane.rosterContent
+	if not content then return end
+
+	hideAll(content.rosterRows)
+	hideAll(content.rosterHeads)
+
+	local raid = R:IsSimulated() and R.simulated or nil
+	if not raid then
+		pane.rosterLabel:Hide()
+		content:SetHeight(1)
+		return
+	end
+	pane.rosterLabel:Show()
+
+	local groups = R:Breakdown(raid, APP.db.playerProfileOverrides)
+	local y, heads, rows = 0, 0, 0
+
+	for _, group in ipairs(groups) do
+		heads = heads + 1
+		local head = content.rosterHeads[heads]
+		if not head then
+			head = CreateFrame("Frame", nil, content)
+			head:SetHeight(18)
+			head.label = Theme:Text(head, "meta", "")
+			head.label:SetPoint("LEFT", head, "LEFT", 0, 0)
+			content.rosterHeads[heads] = head
+		end
+		head:SetWidth(WIDTH - 76)
+		head:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+		head.label:SetText(("|cffe0b060%s|r  |cff6b6b6b%d|r"):format(group.label, #group.rows))
+		head:Show()
+		y = y + 20
+
+		for _, entry in ipairs(group.rows) do
+			rows = rows + 1
+			local row = content.rosterRows[rows]
+			if not row then
+				row = CreateFrame("Frame", nil, content)
+				row:SetHeight(17)
+				row.name = Theme:Text(row, "body", "")
+				row.name:SetPoint("LEFT", row, "LEFT", 12, 0)
+				row.name:SetWidth(110)
+				row.class = Theme:Text(row, "meta", "", Theme.color.textDim)
+				row.class:SetPoint("LEFT", row, "LEFT", 126, 0)
+				row.class:SetWidth(72)
+				row.spec = Theme:Text(row, "meta", "", Theme.color.textDim)
+				row.spec:SetPoint("LEFT", row, "LEFT", 202, 0)
+				row.spec:SetWidth(150)
+				row.marks = Theme:Text(row, "meta", "", Theme.color.textFaint)
+				row.marks:SetPoint("LEFT", row, "LEFT", 358, 0)
+				row.marks:SetWidth(200)
+				content.rosterRows[rows] = row
+			end
+			row:SetWidth(WIDTH - 76)
+			row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+
+			local c = Theme.classColor[entry.class]
+			row.name:SetText(entry.name)
+			if c then row.name:SetTextColor(c[1], c[2], c[3]) end
+			row.class:SetText(entry.classLabel)
+			row.spec:SetText(entry.spec)
+
+			local marks = {}
+			if entry.mainTank then marks[#marks + 1] = "|cffff8040MAIN TANK|r"
+			elseif entry.tank then marks[#marks + 1] = "|cffc79c6eoff-tank|r" end
+			if entry.isPaladin then marks[#marks + 1] = "|cfff58cbapaladin|r" end
+			if entry.guessed then marks[#marks + 1] = "|cff6b6b6bspec guessed|r" end
+			row.marks:SetText(table.concat(marks, "  "))
+
+			row:Show()
+			y = y + 17
+		end
+		y = y + 6
+	end
+
+	content:SetHeight(math.max(1, y))
 end
 
 function UI:RefreshTest()
@@ -902,11 +996,13 @@ function UI:RefreshTest()
 			:format(sum.size, sum.paladins, sum.tanks, sum.healers))
 		pane.seed:SetText(("Seed %s  -  reproduce with  /app test %d %d %d %d %s"):format(
 			tostring(raid.seed), t.raidSize, t.paladins, t.tanks, t.healers, tostring(raid.seed)))
+		self:RefreshRoster()
 	else
 		pane.bar:SetParts({})
 		pane.legend:SetText("")
 		pane.status:SetText("No test raid generated yet.")
 		pane.seed:SetText("")
+		self:RefreshRoster()
 	end
 end
 

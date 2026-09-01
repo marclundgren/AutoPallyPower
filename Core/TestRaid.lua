@@ -63,31 +63,80 @@ T.dpsPool    = {
 	"PRIEST_SHADOW", "MAGE", "WARLOCK", "DRUID_BALANCE", "SHAMAN_ELEMENTAL",
 }
 
-local NAME_PARTS_A = {
-	"Bel", "Thar", "Gor", "Mal", "Zen", "Kel", "Dro", "Fen", "Vor", "Syl",
-	"Nym", "Ard", "Bran", "Cor", "Dun", "Eld", "Fal", "Grim", "Hal", "Irn",
-}
-local NAME_PARTS_B = {
-	"dor", "ric", "gash", "wyn", "ath", "mir", "gar", "iel", "ok", "wen",
-	"dan", "us", "ax", "eth", "ion", "ulf", "ara", "im", "oth", "en",
+local NAMES = {
+	"Aeldrin", "Aerith", "Aethelred", "Agnarr", "Ailwyn", "Alaric",
+	"Alderic", "Aldwin", "Alistair", "Alvarin", "Amberlyn", "Ancelin",
+	"Andarion", "Anluin", "Arawn", "Arcturus", "Ardith", "Arenval",
+	"Argos", "Arianwen", "Ashvane", "Astrid", "Athelas", "Aurelian",
+	"Avarin", "Azrieth", "Baelor", "Balthas", "Bandrik", "Barrowin",
+	"Bastian", "Bearach", "Bellamy", "Berengar", "Bertwald", "Bolvar",
+	"Borrik", "Bramwell", "Brannoc", "Braxis", "Brennius", "Briallen",
+	"Brightmoor", "Brogan", "Bronwyn", "Bryndis", "Cadfael", "Caedmon",
+	"Cairnwald", "Calanthe", "Caldris", "Calloway", "Camrin", "Caradoc",
+	"Carrowen", "Cassivan", "Cedrick", "Celwyn", "Cerwyn", "Chandrel",
+	"Corvane", "Cothric", "Crowmere", "Cynric", "Daegal", "Dalaran",
+	"Danthus", "Darrowmere", "Deacon", "Dellwyn", "Denholm", "Derwent",
+	"Dolvane", "Dorian", "Draeven", "Drusilla", "Dunmorr", "Durstan",
+	"Eadric", "Ealdwin", "Echris", "Edrigan", "Eilonwy", "Elandra",
+	"Eldric", "Elowen", "Elstan", "Emeric", "Ennis", "Eowulf",
+	"Erevan", "Ermengard", "Esbern", "Eskil", "Evrard", "Fairwind",
+	"Falkner", "Farand", "Fendrel", "Fenwick", "Ferrus", "Finnegan",
+	"Fintan", "Fionnula", "Flintlocke", "Fordrin", "Fortane", "Fraywind",
+	"Frostmane", "Fulbert", "Gaelan", "Galehaut", "Garrick", "Gavriel",
+	"Gelwyn", "Genwyn", "Gerhardt", "Gildas", "Gilroy", "Glenvar",
+	"Godric", "Goldwyn", "Gorlan", "Grahame", "Granwell", "Greymane",
+	"Griswold", "Guthric", "Gwenith", "Gwynfor", "Hadrian", "Halberd",
+	"Halloran", "Hardwin", "Harkon", "Haywood", "Hearthlyn", "Helvig",
+	"Herrick", "Hollowmere", "Horvath", "Hrothgar", "Ianthe", "Idrissa",
+	"Ilvane", "Ingvar", "Iolanthe", "Irongarde", "Isadore", "Ivarr",
+	"Jarrow", "Jelena", "Jorrund", "Kaelen", "Kaldwin", "Karsten",
+	"Kaspar", "Kelwyn", "Kendrik", "Kerrigan", "Keswick", "Ketill",
+	"Kolvar", "Kordane", "Kyrian", "Ladrian", "Lambert", "Lanwyn",
+	"Larkspur", "Lassiter", "Leofric", "Lindwyn", "Lorcan", "Lothaire",
+	"Lowenna", "Ludovic", "Lysander", "Maelgwyn", "Magnusson", "Malvane",
+	"Marbrand", "Marcellus", "Mardenholm", "Marwood", "Mathric", "Maudren",
+	"Mercer", "Merideth", "Mordrin", "Morwenna", "Neirin", "Nerissa",
+	"Netherby", "Nevin", "Norwick", "Nyalla", "Oakhurst", "Odalric",
+	"Olwen", "Ondrej", "Orlaith", "Osgood", "Osric", "Oswyn",
+	"Othmar", "Padraic", "Pellinore", "Percival", "Perrin", "Petronel",
+	"Quillon", "Quintus", "Radomir", "Ragnvald", "Rainault", "Ravenwood",
+	"Redmayne", "Reginar", "Rennick", "Rhoswen", "Ridley", "Rikard",
+	"Rodwin", "Rollant", "Roswald", "Rowena", "Rulf", "Rutger",
+	"Sabrehold", "Saeric", "Salvarn", "Sandrik", "Saphira", "Saverin",
+	"Selwyn", "Seraphine", "Sevrin", "Sigrun", "Silvane", "Sorrel",
+	"Stanwick", "Stormvale", "Sulien", "Sylvain", "Tamsin", "Tancred",
+	"Tarran", "Tearlach", "Tessaly", "Thaddeus", "Thalric", "Thelonius",
+	"Theobald", "Thornbury", "Thrandel", "Tiberon", "Torvald", "Tregarth",
+	"Trevalyan", "Tristane", "Tyrwald", "Ulfric", "Ulwin", "Urien",
+	"Vaelora", "Valdric", "Varian", "Vashelm", "Vaughn", "Veldrin",
+	"Verrick", "Vesper", "Vidarr", "Vorlath", "Waldram", "Warrick",
+	"Wendric", "Westhall", "Whitlock", "Wilhelmina", "Willowmere", "Winfred",
+	"Wolfram", "Wulfstan", "Wyndham", "Wynne", "Yarrow", "Ysolde",
+	"Zaraveth", "Zephyrin",
 }
 
---- Deterministic name generator: index -> stable fake character name.
+--- Draw a name nobody in this raid is using yet.
+-- Deterministic for a given seed: the same seed always deals the same names in
+-- the same order, so a composition worth talking about can be handed to someone
+-- else as a number.
 local function makeName(rng, used)
-	for _ = 1, 200 do
-		local a = NAME_PARTS_A[rng(#NAME_PARTS_A)]
-		local b = NAME_PARTS_B[rng(#NAME_PARTS_B)]
-		local name = a .. b
+	local pool = #NAMES
+	-- Probe from a random start rather than rerolling blindly, so filling a
+	-- 40-man from a pool this size stays cheap even near the end.
+	local start = rng(pool)
+	for offset = 0, pool - 1 do
+		local name = NAMES[((start + offset - 1) % pool) + 1]
 		if not used[name] then
 			used[name] = true
 			return name
 		end
 	end
-	-- Pool exhausted; fall back to numbering.
+	-- More raiders than names: fall back to numbering rather than repeating,
+	-- since duplicate names would silently corrupt per-player assignments.
 	local n = 1
-	while used["Filler" .. n] do n = n + 1 end
-	used["Filler" .. n] = true
-	return "Filler" .. n
+	while used["Raider" .. n] do n = n + 1 end
+	used["Raider" .. n] = true
+	return "Raider" .. n
 end
 
 -- Roughly how often a real paladin of each spec has each talent, so generated

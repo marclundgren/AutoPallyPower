@@ -306,15 +306,26 @@ P.ROLE_LABELS = {
 	TANK = "Tanks", HEALER = "Healers", MELEE = "Physical DPS", CASTER = "Caster DPS",
 }
 
+--- The spec on its own, with the class prefix removed -- for anywhere the
+--- class is already shown in its own column or heading.
+--
+-- Some classes carry a single profile because their blessing priorities do not
+-- vary by spec at all. Naming those "All specs" rather than repeating the class
+-- says something true, where "Rogue -- Rogue" says nothing.
+function P:SpecLabel(profile)
+	local label = profile.label or "?"
+	local classLabel = self.CLASS_LABELS[profile.class]
+	if not classLabel then return label end
+	if label == classLabel then return "All specs" end
+	local trimmed = label:match("^" .. classLabel .. "%s*%-%s*(.+)$")
+	return trimmed or label
+end
+
 --- Strip the class prefix from a profile label so it does not repeat the
 --- group heading it already sits under.
 local function shortLabel(profile, mode)
-	local label = profile.label or "?"
-	if mode ~= "class" then return label end
-	local classLabel = P.CLASS_LABELS[profile.class]
-	if not classLabel then return label end
-	local trimmed = label:match("^" .. classLabel .. "%s*%-%s*(.+)$")
-	return trimmed or label
+	if mode ~= "class" then return profile.label or "?" end
+	return P:SpecLabel(profile)
 end
 
 --- Ordered, grouped profile list for the priority rail.

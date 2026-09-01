@@ -310,6 +310,40 @@ handlers.grouping = function(args)
 	end
 end
 
+handlers.roster = function()
+	local db = APP.db
+	local raid = R:Current(db.playerProfileOverrides)
+	if raid.empty then
+		return out("Not in a group. Use /app test to generate a raid first.")
+	end
+
+	local groups = R:Breakdown(raid, db.playerProfileOverrides)
+	if #groups == 0 then
+		return out("Nobody to list.")
+	end
+
+	out(("%s -- %d players"):format(
+		R:IsSimulated() and "Test raid" or "Raid", #raid.members))
+
+	for _, group in ipairs(groups) do
+		local n = #group.rows
+		out(("|cffffd100%s|r |cff9d9d9d(%d)|r"):format(group.label, n))
+		for _, row in ipairs(group.rows) do
+			local marks = {}
+			if row.mainTank then marks[#marks + 1] = "|cffff8040MT|r"
+			elseif row.tank then marks[#marks + 1] = "|cffc79c6eOT|r" end
+			if row.isPaladin then marks[#marks + 1] = "|cffF58CBApally|r" end
+			if row.guessed then marks[#marks + 1] = "|cff9d9d9dguess|r" end
+			local line = ("  %-13s %-9s %-20s"):format(row.name, row.classLabel, row.spec)
+			if #marks > 0 then line = line .. " " .. table.concat(marks, " ") end
+			out(line)
+		end
+	end
+	if R:IsSimulated() then
+		out(("|cff9d9d9dseed %s|r"):format(tostring(raid.seed)))
+	end
+end
+
 handlers.override = function(args)
 	local db = APP.db
 	local name, profileKey = args[1], args[2]
@@ -399,6 +433,7 @@ handlers.help = function()
 	out("  /app pinmode preference|hard     how strictly pins are held")
 	out("  /app pin <paladin> <blessing|clear>")
 	out("  /app override <player> <PROFILE|clear>")
+	out("  /app roster                  every raider by class, spec and role")
 	out("  /app status                  what the addon currently sees")
 end
 
