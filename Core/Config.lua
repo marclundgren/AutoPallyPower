@@ -26,6 +26,15 @@ function Config:Defaults()
 		-- name -> profile key, for players whose spec we cannot detect.
 		playerProfileOverrides = {},
 		tankPriority = "threat",
+		-- Pins: one paladin held to one blessing across every class column.
+		-- "preference" lets the solver overrule a pin when a column clearly
+		-- wants otherwise; "hard" means the pinned paladin casts that blessing
+		-- or nothing at all.
+		pins = {},
+		pinMode = "preference",
+		pinStrength = 8,
+		-- A protection paladin who is tanking carries Salvation for the raid.
+		protPaladinSalvation = true,
 		-- How the priority list groups its profiles: "class" or "role".
 		railGrouping = "class",
 		overridePenalty = S.DEFAULT_OVERRIDE_PENALTY,
@@ -95,6 +104,10 @@ function Config:SolverConfig()
 		tankPriority = tankPriority,
 		profiles = profiles,
 		playerProfileOverrides = db.playerProfileOverrides,
+		pins = db.pins,
+		pinMode = db.pinMode,
+		pinStrength = db.pinStrength,
+		protPaladinSalvation = db.protPaladinSalvation,
 	}
 end
 

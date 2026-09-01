@@ -54,6 +54,44 @@ enough to actually use.
 
 Given the same raid, it always produces the same plan.
 
+## Rules and pins
+
+Most of the engine works by solving each class column independently, which is
+what makes it exactly optimal. A **pin** deliberately breaks that: it holds one
+paladin to one blessing across every column. That is a convention imposed from
+outside the maths, so it has to earn its place.
+
+One rule ships, on by default. **A protection paladin who is tanking carries
+Salvation for the whole raid.** The reasoning is that Salvation is the one
+blessing that paladin cannot use — rule zero forbids it, and their own greater
+blessing is spent overriding themselves onto Sanctuary regardless, since nobody
+else can cast it. Meanwhile Salvation is first choice for nearly every DPS. So
+giving it to the paladin who cannot benefit frees the others to sit on Wisdom
+and Might, which are the blessings that carry Improved talents.
+
+The rule declines rather than misfiring. It needs a protection paladin who is
+actually tanking, and at least one *other* paladin who actually has Kings to
+hand them — a second paladin is not enough if they skipped the talent. With two
+protection paladins tanking, the one in the main tank slot is chosen.
+
+Measured across 322 generated raids meeting the preconditions: never worse for
+what players receive, better in 45, at a cost of roughly one extra override
+every eighteen raids.
+
+Pins come in two strengths. **Preference** (the default) lets the solver
+overrule a pin where a column clearly wants otherwise; it holds in 99% of
+columns and costs +18 overrides across those 322 raids. **Hard** means the
+pinned paladin casts that blessing or nothing at all; it holds in 100% of
+columns and costs +62. Both deliver identical blessings, so preference buys the
+same result for a third of the clicks.
+
+Pin strength is deliberately set below the override threshold, which gives it a
+rule you can state plainly: a pin never justifies an extra override on its own.
+Set it higher and it becomes a hard pin wearing a disguise.
+
+You can also pin by hand — `/app pin <paladin> <blessing>` — which takes
+precedence over any rule.
+
 ## Commands
 
 ```
@@ -65,6 +103,9 @@ Given the same raid, it always produces the same plan.
 /app test off   back to the live raid
 /app tankmode threat|survival
 /app grouping class|role         how the priority list is grouped
+/app protsalv on|off             prot paladin tank carries Salvation
+/app pinmode preference|hard     how strictly pins are held
+/app pin <paladin> <blessing|clear>
 /app override <player> <PROFILE|clear>
 /app status     what the addon currently sees
 ```

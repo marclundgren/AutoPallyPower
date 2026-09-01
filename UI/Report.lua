@@ -53,6 +53,13 @@ function Report:Plan(result, opts)
 		result.context.holyPaladin and "yes" or "no",
 		result.context.protPaladin and "yes" or "no",
 		result.context.tankPriority))
+	if result.appliedRules and #result.appliedRules > 0 then
+		add(C("head", ("Rules in force (%s)"):format(result.pinMode or "preference")))
+		for _, rule in ipairs(result.appliedRules) do
+			add(("  %s carries %s for every class  %s"):format(
+				rule.paladin, B:Name(rule.blessing), C("dim", "-- " .. rule.because)))
+		end
+	end
 	add("")
 
 	add(C("head", "Greater blessings by class"))

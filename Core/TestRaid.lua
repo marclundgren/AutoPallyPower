@@ -117,6 +117,7 @@ function T:Generate(opts)
 
 	local used = {}
 	local members, paladins = {}, {}
+	local tanksAdded = 0
 
 	local function add(profileKey, isTank, forcedSpec)
 		local profile = P.defaults[profileKey]
@@ -127,6 +128,12 @@ function T:Generate(opts)
 			profile = profileKey,
 			tank = isTank and true or false,
 		}
+		if isTank then
+			-- Exactly one main tank; any further tanks are off-tanks, which is
+			-- what the raid's MAINTANK/MAINASSIST slots look like in practice.
+			tanksAdded = tanksAdded + 1
+			m.raidRole = (tanksAdded == 1) and "MAINTANK" or "MAINASSIST"
+		end
 		members[#members + 1] = m
 
 		if profile.class == "PALADIN" then

@@ -16,6 +16,7 @@ end
 load("Core/Init.lua")
 load("Core/Blessings.lua")
 load("Core/Profiles.lua")
+load("Core/Rules.lua")
 load("Core/Solver.lua")
 load("Core/TestRaid.lua")
 -- Pure at load time: the adapter only touches WoW globals inside its functions.

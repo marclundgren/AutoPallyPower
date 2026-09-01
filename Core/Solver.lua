@@ -60,6 +60,18 @@ S.SALV_ON_TANK = -10000
 -- this can never overturn a real difference of even one point.
 S.TALENT_TIEBREAK = 0.0001
 
+-- How hard a pin pulls, per member in the column. A pin is a convention
+-- imposed from outside the maths, so by default it is a preference the solver
+-- can overrule when the alternative is clearly better for the people in that
+-- column, not a constraint. Scaled per member so it does not become
+-- vanishingly weak in a column of eight and overwhelming in a column of one.
+--
+-- Deliberately below DEFAULT_OVERRIDE_PENALTY, which gives it a rule you can
+-- state plainly: a pin never justifies an extra override on its own. Set it
+-- above the penalty and the pin wins every time the only thing standing
+-- against it is one more click, which is a hard pin wearing a disguise.
+S.DEFAULT_PIN_STRENGTH = 8
+
 local function defaultConfig()
 	return {
 		weights = S.DEFAULT_WEIGHTS,
@@ -67,6 +79,10 @@ local function defaultConfig()
 		tankPriority = "threat",
 		profiles = P.defaults,
 		playerProfileOverrides = {},
+		pins = {},
+		pinMode = "preference",
+		pinStrength = S.DEFAULT_PIN_STRENGTH,
+		protPaladinSalvation = true,
 	}
 end
 
@@ -113,6 +129,7 @@ function S:PrepareMembers(members, ctx, config)
 			class = m.class,
 			classID = B.CLASS_IDS[m.class],
 			tank = m.tank and true or false,
+			raidRole = m.raidRole,
 			role = profile and profile.role or nil,
 			profileKey = key,
 			profileLabel = profile and profile.label or key,
@@ -168,10 +185,23 @@ end
 --
 -- Done as a DP over paladins with a bitmask of covered blessings. At most six
 -- blessings means 64 masks, so this is exact and still trivially cheap.
--- @return holders (blessing id -> paladin index), total talent weight; or nil
-function S:MatchBlessings(blessings, paladins)
+-- Pins are folded into the same optimisation rather than applied afterwards.
+-- In "preference" mode a pinned paladin simply scores a bonus for taking their
+-- pinned blessing, so the solver keeps the freedom to overrule it. In "hard"
+-- mode they may only take that blessing, or sit the column out -- never a
+-- different one, since a uniform row is the whole point.
+--
+-- @param pins  { [paladin name] = blessing }
+-- @param opts  { mode = "preference"|"hard", strength = number }
+-- @return holders (blessing id -> paladin index), talent weight, pin bonus; or nil
+function S:MatchBlessings(blessings, paladins, pins, opts)
 	local k = #blessings
-	if k == 0 then return {}, 0 end
+	if k == 0 then return {}, 0, 0 end
+
+	pins = pins or {}
+	opts = opts or {}
+	local hard = (opts.mode == "hard")
+	local strength = opts.strength or 0
 
 	local full = 2 ^ k - 1
 	local NEG = -math.huge
@@ -197,12 +227,20 @@ function S:MatchBlessings(blessings, paladins)
 					nchoice[mask] = 0
 				end
 				-- Or takes one blessing not yet covered.
+				local pinned = pins[pally.name]
 				for bi = 1, k do
 					local bit = 2 ^ (bi - 1)
 					if math.floor(mask / bit) % 2 == 0 then
 						local blessing = blessings[bi]
-						if pally.canCast and pally.canCast[blessing] then
-							local w = base + self:TalentWeight(pally, blessing)
+						local allowed = pally.canCast and pally.canCast[blessing]
+						if hard and pinned and blessing ~= pinned then
+							allowed = false
+						end
+						if allowed then
+							local w = base + self:TalentWeight(pally, blessing) * self.TALENT_TIEBREAK
+							if pinned and blessing == pinned then
+								w = w + strength
+							end
 							local nm = mask + bit
 							if w > ndp[nm] then
 								ndp[nm] = w
@@ -222,16 +260,24 @@ function S:MatchBlessings(blessings, paladins)
 		return nil
 	end
 
+	-- The DP optimises talent and pin together; report them apart so callers
+	-- (and tests) can reason about each on its own terms.
 	local holders, mask = {}, full
+	local talentWeight, pinBonus = 0, 0
 	for i = #paladins, 1, -1 do
 		local bi = choice[i][mask]
 		if bi and bi > 0 then
-			holders[blessings[bi]] = i
+			local blessing = blessings[bi]
+			holders[blessing] = i
+			talentWeight = talentWeight + self:TalentWeight(paladins[i], blessing)
+			if pins[paladins[i].name] == blessing then
+				pinBonus = pinBonus + strength
+			end
 			mask = mask - 2 ^ (bi - 1)
 		end
 	end
 
-	return holders, dp[full]
+	return holders, talentWeight, pinBonus
 end
 
 --------------------------------------------------------------------------
@@ -317,13 +363,20 @@ function S:ScoreSet(members, blessingSet, holders, paladins, config)
 end
 
 --- Solve a single class column.
-function S:SolveClass(members, paladins, config)
+function S:SolveClass(members, paladins, config, pins)
 	if #members == 0 or #paladins == 0 then
 		return { blessings = {}, holders = {}, overrides = {}, score = 0, ranked = 0, talentWeight = 0 }
 	end
 
 	local maxSize = #paladins
 	local best = nil
+
+	local pinOpts = {
+		mode = config.pinMode or "preference",
+		-- Scaled by column size so the pull is comparable to the member values
+		-- it is competing against.
+		strength = (config.pinStrength or self.DEFAULT_PIN_STRENGTH) * #members,
+	}
 
 	-- Ascending mask order makes ties resolve to the smallest set, which also
 	-- means fewer blessings cast for the same value.
@@ -336,14 +389,15 @@ function S:SolveClass(members, paladins, config)
 		end
 
 		if #set <= maxSize then
-			local holders, talentWeight = self:MatchBlessings(set, paladins)
+			local holders, talentWeight, pinBonus = self:MatchBlessings(set, paladins, pins, pinOpts)
 			if holders then
 				local score, overrides = self:ScoreSet(members, set, holders, paladins, config)
-				local ranked = score + (talentWeight or 0) * self.TALENT_TIEBREAK
+				local ranked = score + (talentWeight or 0) * self.TALENT_TIEBREAK + (pinBonus or 0)
 				if best == nil or ranked > best.ranked then
 					best = {
 						blessings = set, holders = holders, overrides = overrides,
-						score = score, ranked = ranked, talentWeight = talentWeight or 0,
+						score = score, ranked = ranked,
+						talentWeight = talentWeight or 0, pinBonus = pinBonus or 0,
 					}
 				end
 			end
@@ -374,6 +428,10 @@ function S:Solve(raid, config)
 	local ctx = self:BuildContext(paladins, config)
 	local members = self:PrepareMembers(raid.members, ctx, config)
 
+	-- Rules run before the solve: they decide the conventions the solve then
+	-- works within, rather than adjusting its output afterwards.
+	local pins, appliedRules = APP.Rules:Pins(members, paladins, config)
+
 	-- Bucket members into PallyPower's class columns.
 	local byClass = {}
 	for i = 1, B.MAX_CLASSES do byClass[i] = {} end
@@ -388,6 +446,9 @@ function S:Solve(raid, config)
 		context = ctx,
 		paladins = paladins,
 		members = members,
+		pins = pins,
+		appliedRules = appliedRules,
+		pinMode = config.pinMode or "preference",
 		grid = {},        -- [paladinName][classID] = blessing
 		overrides = {},   -- flat list for the adapter
 		perClass = {},
@@ -403,7 +464,7 @@ function S:Solve(raid, config)
 
 	for classID = 1, B.MAX_CLASSES do
 		local columnMembers = byClass[classID]
-		local solved = self:SolveClass(columnMembers, paladins, config)
+		local solved = self:SolveClass(columnMembers, paladins, config, pins)
 
 		for blessing, pi in pairs(solved.holders) do
 			result.grid[paladins[pi].name][classID] = blessing

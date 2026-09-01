@@ -158,6 +158,65 @@ handlers.tankmode = function(args)
 		or "Tanks favour Blessing of Light for survivability (needs a holy paladin)."))
 end
 
+handlers.protsalv = function(args)
+	local db = APP.db
+	local arg = args[1]
+	if arg ~= "on" and arg ~= "off" then
+		out(("Prot paladin Salvation rule is %s. Use /app protsalv on|off.")
+			:format(db.protPaladinSalvation and "on" or "off"))
+		return
+	end
+	db.protPaladinSalvation = (arg == "on")
+	out(("Prot paladin Salvation rule %s."):format(arg == "on" and "enabled" or "disabled"))
+	if arg == "on" then
+		out("A protection paladin who is tanking will carry Salvation for every class,")
+		out("provided another paladin has Kings to give them.")
+	end
+end
+
+handlers.pinmode = function(args)
+	local db = APP.db
+	local mode = args[1]
+	if mode ~= "preference" and mode ~= "hard" then
+		out(("Pin mode is '%s'. Use /app pinmode preference|hard."):format(db.pinMode))
+		out("  preference  the solver may overrule a pin when a class clearly wants otherwise")
+		out("  hard        a pinned paladin casts that blessing or nothing")
+		return
+	end
+	db.pinMode = mode
+	out(("Pin mode set to '%s'."):format(mode))
+end
+
+handlers.pin = function(args)
+	local db = APP.db
+	local name, blessing = args[1], args[2]
+	if not name then
+		local n = 0
+		for pally, b in pairs(db.pins) do
+			out(("  %s -> %s"):format(pally, B:Name(b)))
+			n = n + 1
+		end
+		if n == 0 then out("No manual pins. Use /app pin <paladin> <blessing|clear>.") end
+		return
+	end
+	if blessing == "clear" then
+		db.pins[name] = nil
+		return out(("Cleared pin for %s."):format(name))
+	end
+	local id
+	for _, b in ipairs(B.ALL) do
+		if B:Name(b):lower() == (blessing or ""):lower()
+			or B:Short(b):lower() == (blessing or ""):lower() then
+			id = b
+		end
+	end
+	if not id then
+		return out("Unknown blessing. Use one of: Wisdom, Might, Kings, Salvation, Light, Sanctuary.")
+	end
+	db.pins[name] = id
+	out(("%s is pinned to %s for every class."):format(name, B:Name(id)))
+end
+
 handlers.grouping = function(args)
 	local db = APP.db
 	local mode = args[1]
@@ -209,6 +268,8 @@ handlers.status = function()
 	out(("Test mode: %s"):format(R:IsSimulated() and "on" or "off"))
 	out(("Tank mode: %s"):format(db.tankPriority))
 	out(("Priority grouping: %s"):format(db.railGrouping))
+	out(("Prot paladin Salvation rule: %s"):format(db.protPaladinSalvation and "on" or "off"))
+	out(("Pin mode: %s"):format(db.pinMode))
 	out(("Override threshold: %d"):format(db.overridePenalty))
 	local pallys = PP:GetPaladins()
 	out(("Paladins known to PallyPower: %d"):format(#pallys))
@@ -233,6 +294,9 @@ handlers.help = function()
 	out("  /app test off                back to the live raid")
 	out("  /app tankmode threat|survival")
 	out("  /app grouping class|role         how the priority list is grouped")
+	out("  /app protsalv on|off             prot paladin tank carries Salvation")
+	out("  /app pinmode preference|hard     how strictly pins are held")
+	out("  /app pin <paladin> <blessing|clear>")
 	out("  /app override <player> <PROFILE|clear>")
 	out("  /app status                  what the addon currently sees")
 end

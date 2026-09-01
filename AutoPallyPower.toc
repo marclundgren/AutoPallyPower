@@ -11,6 +11,7 @@
 Core\Init.lua
 Core\Blessings.lua
 Core\Profiles.lua
+Core\Rules.lua
 Core\Solver.lua
 Core\TestRaid.lua
 Core\Roster.lua
