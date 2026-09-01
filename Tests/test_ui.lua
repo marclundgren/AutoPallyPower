@@ -436,6 +436,93 @@ do
 	T.eq("nothing scheduled while on another tab", #stub.timers, 0)
 end
 
+--------------------------------------------------------------------------
+print("== a pane stuck on 'no paladins' recovers when PallyPower syncs ==")
+do
+	-- The live bug: joined a raid, the plan could not solve because PallyPower
+	-- had not told us about any paladins yet, and nothing re-solved when it
+	-- did. Apply stayed disabled until a /reload.
+	APP.Commands:Handle("test off")
+	stub.group.members = {
+		{ name = "Rageblue", class = "PALADIN", raidRole = "MAINTANK" },
+		{ name = "Otherpal", class = "PALADIN" },
+		{ name = "Tankwar",  class = "WARRIOR", raidRole = "MAINTANK" },
+		{ name = "Furywar",  class = "WARRIOR" },
+		{ name = "Healpri",  class = "PRIEST" },
+	}
+	stub.group.raid = true
+	stub.group.leader, stub.group.assistant = false, false
+
+	APP.MainFrame:Show(2)
+	_G.PallyPower_Assignments = {}
+	APP.MainFrame:RefreshPlan()
+
+	local pane = APP.MainFrame.planPane
+	T.check("apply is disabled while no paladins are known", pane.apply.__enabled == false)
+	T.check("the notice explains itself",
+		(pane.notice:GetText() or ""):find("No paladins found") ~= nil)
+	T.check("refresh stays available as the way out",
+		pane.refresh.__enabled ~= false)
+
+	-- PallyPower's sync arrives over the addon channel.
+	_G.PallyPower_Assignments = { Rageblue = {}, Otherpal = {} }
+	stub.fireEvent("CHAT_MSG_ADDON", "PLPWR", "SELF 726131413000@nnnnnnnnn", "RAID", "Otherpal")
+	stub.runTimers()
+
+	T.check("apply becomes usable once the sync lands", pane.apply.__enabled == true)
+	T.check("preview becomes usable too", pane.preview.__enabled == true)
+	T.check("the notice clears", not pane.notice:IsShown())
+end
+
+--------------------------------------------------------------------------
+print("== being promoted to assistant is noticed without a reload ==")
+do
+	local pane = APP.MainFrame.planPane
+	stub.group.leader, stub.group.assistant = false, false
+	APP.PP:AuthorityChanged()          -- prime the baseline
+	APP.MainFrame:RefreshPlan()
+
+	T.check("without authority, the warning names who we cannot set",
+		pane.warn:IsShown(), "expected a warning while not leader or assistant")
+
+	local before = #chat
+	stub.group.assistant = true
+	stub.fireEvent("GROUP_ROSTER_UPDATE")
+	stub.runTimers()
+
+	T.check("the stale warning clears once we have assist", not pane.warn:IsShown())
+
+	local announced = false
+	for i = before + 1, #chat do
+		if tostring(chat[i]):find("leader or assistant") then announced = true end
+	end
+	T.check("and it is said out loud, since the tab may not be open", announced)
+
+	local before2 = #chat
+	stub.group.assistant = false
+	stub.fireEvent("PARTY_LEADER_CHANGED")
+	stub.runTimers()
+	local demoted = false
+	for i = before2 + 1, #chat do
+		if tostring(chat[i]):find("no longer") then demoted = true end
+	end
+	T.check("losing assist is announced as well", demoted)
+end
+
+--------------------------------------------------------------------------
+print("== a refresh asked for while hidden is not thrown away ==")
+do
+	APP.MainFrame.frame:Hide()
+	APP.MainFrame.__planDirty = nil
+	stub.fireEvent("GROUP_ROSTER_UPDATE")
+	T.check("the plan is marked stale even with the window closed",
+		APP.MainFrame.__planDirty == true)
+
+	APP.MainFrame:Show(2)
+	T.check("opening the window clears the stale mark",
+		APP.MainFrame.__planDirty == nil)
+end
+
 stub.restore()
 
 print(("\nui: %d passed, %d failed"):format(T.passed, T.failed))

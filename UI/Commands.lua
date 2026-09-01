@@ -477,6 +477,23 @@ end
 -- Dispatch
 --------------------------------------------------------------------------
 
+--- Say something when our authority changes, and re-solve.
+-- Being promoted mid-raid is common and easy to miss; without a word in chat
+-- the only sign is a warning quietly disappearing from a tab you may not have
+-- open.
+function Commands:CheckAuthority()
+	local changed, now = PP:AuthorityChanged()
+	if not changed then return false end
+
+	if now then
+		out("|cff1eff00You are now leader or assistant|r -- you can set assignments for every paladin.")
+	else
+		out("|cffff2020You are no longer leader or assistant|r -- you can only set paladins with Free Assignment on.")
+	end
+	if APP.MainFrame then APP.MainFrame:ScheduleRefresh(0) end
+	return true
+end
+
 function Commands:Handle(input)
 	input = (input or ""):match("^%s*(.-)%s*$")
 	local parts = {}
@@ -507,6 +524,9 @@ frame:RegisterEvent("SPELLS_CHANGED")
 frame:RegisterEvent("CHARACTER_POINTS_CHANGED")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_ROLES_ASSIGNED")
+-- Promotion to assistant is the difference between being able to set every
+-- paladin and only yourself, so it has to be noticed the moment it happens.
+frame:RegisterEvent("PARTY_LEADER_CHANGED")
 
 frame:SetScript("OnEvent", function(_, event, arg1, ...)
 	return APP.SafeCall("event " .. tostring(event), function(...)
@@ -528,6 +548,9 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
 		-- Read our own talents straight away rather than waiting for the first
 		-- world event, so /app status is right the moment the addon loads.
 		PP:ScanSelf()
+		-- Prime the baseline so the first real promotion registers as a change
+		-- rather than as "we have never looked".
+		PP:AuthorityChanged()
 
 		if APP.Minimap then APP.Minimap:Create() end
 
@@ -539,11 +562,19 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
 
 	elseif event == "CHAT_MSG_ADDON" then
 		local prefix, message, channel, sender = arg1, ...
-		PP:OnAddonMessage(prefix, message, channel, sender)
+		-- A paladin we did not know about becomes one we do precisely here, so
+		-- a plan solved before this arrived is stale the moment it lands. Not
+		-- re-solving on sync is what left the window stuck on "no paladins
+		-- found" until a reload.
+		if PP:OnAddonMessage(prefix, message, channel, sender) then
+			if APP.MainFrame then APP.MainFrame:ScheduleRefresh() end
+		end
 
-	elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED" then
-		-- Someone joined, left, or changed role. These fire in bursts, so the
-		-- refresh is coalesced rather than run once per event.
+	elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED"
+		or event == "PARTY_LEADER_CHANGED" then
+		-- Someone joined, left, changed role, or handed out assist. These fire
+		-- in bursts, so the refresh is coalesced rather than run once per event.
+		Commands:CheckAuthority()
 		if APP.MainFrame then APP.MainFrame:ScheduleRefresh() end
 
 	else

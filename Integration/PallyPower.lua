@@ -84,25 +84,49 @@ function PP:ParseSelf(sender, msg)
 	return info
 end
 
+--- Handle one PallyPower broadcast.
+-- @return true when this changed something the plan depends on, so the caller
+--         knows to re-solve. Sync is exactly how a paladin we did not know
+--         about becomes one we do, and a plan computed before that arrived is
+--         stale the moment it lands.
 function PP:OnAddonMessage(prefix, message, _, sender)
-	if prefix ~= self.PREFIX then return end
+	if prefix ~= self.PREFIX then return false end
 	sender = stripRealm(sender)
-	if not sender then return end
+	if not sender then return false end
+
+	local changed = false
 
 	-- Any message at all proves they are running PallyPower.
+	if not self.heard[sender] then changed = true end
 	self.heard[sender] = true
 
 	if message:sub(1, 4) == "SELF" then
 		self:ParseSelf(sender, message)
+		changed = true
 	end
 
 	-- Sent alongside SELF whenever they sync. Whether a paladin accepts
 	-- assignments from a non-leader turns entirely on this.
 	if message:find("FREEASSIGN YES", 1, true) then
+		if self.freeAssign[sender] ~= true then changed = true end
 		self.freeAssign[sender] = true
 	elseif message:find("FREEASSIGN NO", 1, true) then
+		if self.freeAssign[sender] ~= false then changed = true end
 		self.freeAssign[sender] = false
 	end
+
+	return changed
+end
+
+--- Whether our authority has changed since last asked.
+-- Being promoted mid-raid is normal, and the window has to notice: everything
+-- about who we can set assignments for turns on it.
+function PP:AuthorityChanged()
+	local now = self:HaveAuthority()
+	local was = self.__lastAuthority
+	self.__lastAuthority = now
+	if was == nil then return false, now end
+	return (was ~= now), now
 end
 
 --------------------------------------------------------------------------

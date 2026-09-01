@@ -253,8 +253,12 @@ function stub.install(opts)
 		if not m then return nil end
 		return m.name, 0, 1, 70, m.class, m.class, nil, nil, nil, m.raidRole
 	end
-	_G.UnitIsGroupLeader = function() return opts.leader and true or false end
-	_G.UnitIsGroupAssistant = function() return false end
+	-- Rank is mutable so a test can promote the player mid-run, which is the
+	-- only way to reproduce "they gave me assist and the window did not notice".
+	stub.group.leader = opts.leader and true or false
+	stub.group.assistant = opts.assistant and true or false
+	_G.UnitIsGroupLeader = function() return stub.group.leader end
+	_G.UnitIsGroupAssistant = function() return stub.group.assistant end
 
 	_G.UnitClass = function(u)
 		if u and u ~= "player" then

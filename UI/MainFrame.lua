@@ -166,6 +166,10 @@ end
 -- GROUP_ROSTER_UPDATE fires several times for a single join or leave, and
 -- re-solving on each would be wasted work and a visibly flickering panel.
 function UI:ScheduleRefresh(delay)
+	-- Remember that the plan went stale even when we cannot act on it yet, so
+	-- opening the window or returning to the tab shows fresh state rather than
+	-- whatever was true when it was last visible.
+	self.__planDirty = true
 	if not self.frame or not self.frame:IsShown() then return end
 	if self.current ~= 2 then return end
 	if self.__refreshPending then return end
@@ -588,6 +592,7 @@ function UI:RefreshPlan()
 	local content = pane.content
 
 	self.__refreshPending = nil
+	self.__planDirty = nil
 	local stamped = nowText()
 	pane.stamp:SetText(stamped and ("updated " .. stamped) or "")
 
@@ -606,6 +611,10 @@ function UI:RefreshPlan()
 		Theme:SetEnabled(pane.preview, false)
 		Theme:SetEnabled(pane.apply, false)
 		Theme:SetEnabled(pane.verify, false)
+		-- Refresh stays live in every branch. It is the manual way out of a
+		-- pane that got stuck on stale state, so disabling it would remove the
+		-- one control that can recover without a reload.
+		Theme:SetEnabled(pane.refresh, true)
 		pane.applyNote:SetText("")
 		return
 	end
@@ -613,10 +622,14 @@ function UI:RefreshPlan()
 
 	local result, err = APP.Commands:Solve()
 	if not result then
-		pane.notice:SetText(err or "Could not solve.")
+		pane.notice:SetText((err or "Could not solve.")
+			.. "\nThis clears itself once PallyPower syncs. Refresh to ask now.")
 		pane.notice:Show()
 		Theme:SetEnabled(pane.preview, false)
 		Theme:SetEnabled(pane.apply, false)
+		Theme:SetEnabled(pane.verify, false)
+		Theme:SetEnabled(pane.refresh, true)
+		pane.applyNote:SetText("")
 		return
 	end
 
@@ -644,6 +657,7 @@ function UI:RefreshPlan()
 	Theme:SetEnabled(pane.preview, not simulated)
 	Theme:SetEnabled(pane.apply, not simulated)
 	Theme:SetEnabled(pane.verify, not simulated)
+	Theme:SetEnabled(pane.refresh, true)
 	pane.applyNote:SetText(simulated and "Disabled: this is a simulated raid." or "")
 
 	-- Who will not receive what we send, and why.
