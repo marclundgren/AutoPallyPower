@@ -150,7 +150,7 @@ precedence over any rule.
 /app pinmode preference|hard     how strictly pins are held
 /app pin <paladin> <blessing|clear>
 /app override <player> <PROFILE|clear>
-/app roster     every raider by class, spec and role
+/app roster     every raider by class, spec, role, and what they get
 /app status     what the addon currently sees
 ```
 

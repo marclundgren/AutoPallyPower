@@ -162,15 +162,27 @@ end
 -- had to guess at is flagged, because "why is that druid getting Might" is
 -- almost always answered by "we guessed their spec wrong".
 --
--- @param raid      { members = {...} }
+-- Paladins carry two different notions of spec, and conflating them hides the
+-- one that matters. Their *profile* is the blessing priority they are treated
+-- by, which follows their raid role; their *talent spec* is what they can
+-- actually cast. A protection paladin who is not tanking is profiled as
+-- retribution, and without naming the talent spec separately there is nothing
+-- on the row to say they are the only person in the raid who has Sanctuary.
+--
+-- @param raid      { members = {...}, paladins = {...} }
 -- @param overrides optional manual profile assignments
+-- @param result    optional solver output; adds what each player receives and casts
 -- @return array of { key, label, rows = { {...} } } in tank, healer, melee, caster order
-function R:Breakdown(raid, overrides)
+function R:Breakdown(raid, overrides, result)
 	local buckets = {}
 	for _, key in ipairs(P.ROLE_ORDER) do buckets[key] = {} end
 
 	local classRank = {}
 	for i, class in ipairs(P.CLASS_ORDER) do classRank[class] = i end
+
+	-- Paladins are the actors here, so their capabilities belong on the row.
+	local paladinByName = {}
+	for _, p in ipairs(raid.paladins or {}) do paladinByName[p.name] = p end
 
 	for _, m in ipairs(raid.members or {}) do
 		local key = P:ForMember(m, overrides)
@@ -195,6 +207,46 @@ function R:Breakdown(raid, overrides)
 			guessed = P:IsGuess(m, overrides),
 			isPaladin = (m.class == "PALADIN"),
 		}
+
+		local row = bucket[#bucket]
+		local pally = paladinByName[m.name]
+		if pally then
+			row.paladinSpec = pally.spec
+			row.canSanctuary = (pally.canCast and pally.canCast[B.SANCTUARY]) or false
+			row.canKings = (pally.canCast and pally.canCast[B.KINGS]) or false
+		end
+
+		if result then
+			-- What this player ends up holding once overrides are applied.
+			local delivered = result.delivered and result.delivered[m.name]
+			if delivered then
+				local got = {}
+				for _, b in ipairs(B.ALL) do
+					if delivered[b] then got[#got + 1] = b end
+				end
+				row.receives = got
+			end
+
+			-- And, for a paladin, which greater blessings they are on. Listed
+			-- as the distinct set rather than per class, because a uniform row
+			-- is the thing worth noticing.
+			local assigned = result.grid and result.grid[m.name]
+			if assigned then
+				local seen, casts = {}, {}
+				for classID = 1, B.MAX_CLASSES do
+					local column = result.perClass and result.perClass[classID]
+					local blessing = assigned[classID]
+					if blessing and blessing ~= B.NONE
+						and (not column or column.memberCount > 0) and not seen[blessing] then
+						seen[blessing] = true
+						casts[#casts + 1] = blessing
+					end
+				end
+				table.sort(casts)
+				row.casts = casts
+				row.pinnedTo = result.pins and result.pins[m.name] or nil
+			end
+		end
 	end
 
 	local out = {}

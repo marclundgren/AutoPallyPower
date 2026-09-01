@@ -317,25 +317,61 @@ handlers.roster = function()
 		return out("Not in a group. Use /app test to generate a raid first.")
 	end
 
-	local groups = R:Breakdown(raid, db.playerProfileOverrides)
+	-- Solve so the list can say what happens to each player, not just who is
+	-- there. Without it the answer to "what is that paladin on" is a different
+	-- command away.
+	local result = Commands:Solve()
+
+	local groups = R:Breakdown(raid, db.playerProfileOverrides, result)
 	if #groups == 0 then
 		return out("Nobody to list.")
 	end
 
+	local function blessings(list)
+		if not list or #list == 0 then return "--" end
+		local names = {}
+		for _, b in ipairs(list) do names[#names + 1] = B:Short(b) end
+		return table.concat(names, " ")
+	end
+
 	out(("%s -- %d players"):format(
 		R:IsSimulated() and "Test raid" or "Raid", #raid.members))
+	if result then
+		out("|cff9d9d9d  name / role / class / spec  ->  receives  |  paladin casts|r")
+	end
+
+	local PALADIN_SPEC = { PROT = "protection", HOLY = "holy", RET = "retribution" }
 
 	for _, group in ipairs(groups) do
-		local n = #group.rows
-		out(("|cffffd100%s|r |cff9d9d9d(%d)|r"):format(group.label, n))
+		out(("|cffffd100%s|r |cff9d9d9d(%d)|r"):format(group.label, #group.rows))
 		for _, row in ipairs(group.rows) do
+			local role = row.mainTank and "|cffff8040MT|r"
+				or (row.tank and "|cffc79c6eOT|r" or "  ")
+
+			-- A paladin's talent spec only earns a mention when it differs from
+			-- the profile they are treated by -- which is exactly the case that
+			-- would otherwise hide the raid's only Sanctuary.
+			local spec = row.spec
+			local talent = PALADIN_SPEC[row.paladinSpec or ""]
+			if row.isPaladin and talent and talent ~= row.spec:lower() then
+				spec = ("%s |cfff58cba(%s)|r"):format(row.spec, talent)
+			end
+
+			local line = ("  %-13s %s %-9s %-22s"):format(row.name, role, row.classLabel, spec)
+			if result then
+				line = line .. (" %-16s"):format(blessings(row.receives))
+				if row.isPaladin then
+					line = line .. " |cffe0b060casts|r " .. blessings(row.casts)
+					if row.pinnedTo then line = line .. " |cffe0b060(pinned)|r" end
+				end
+			end
+
 			local marks = {}
-			if row.mainTank then marks[#marks + 1] = "|cffff8040MT|r"
-			elseif row.tank then marks[#marks + 1] = "|cffc79c6eOT|r" end
-			if row.isPaladin then marks[#marks + 1] = "|cffF58CBApally|r" end
+			if row.isPaladin and row.canSanctuary then marks[#marks + 1] = "|cff5a8fa8sanc|r" end
+			if row.isPaladin and not row.canKings then marks[#marks + 1] = "|cffe0575cno kings|r" end
 			if row.guessed then marks[#marks + 1] = "|cff9d9d9dguess|r" end
-			local line = ("  %-13s %-9s %-20s"):format(row.name, row.classLabel, row.spec)
-			if #marks > 0 then line = line .. " " .. table.concat(marks, " ") end
+			if #marks > 0 then line = line .. "  " .. table.concat(marks, " ") end
+
 			out(line)
 		end
 	end

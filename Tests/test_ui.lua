@@ -108,11 +108,45 @@ do
 			end
 			T.eq("no roster row is blank", blank, 0)
 
+			-- The three questions the roster has to answer at a glance.
+			local sawMainTank, sawPaladinCasting, sawReceives = false, false, false
+			for _, row in ipairs(content.rosterRows) do
+				if row:IsShown() then
+					if (row.role:GetText() or ""):find("MAIN TANK") then sawMainTank = true end
+					local casts = row.casts:GetText() or ""
+					if casts ~= "" and casts:find("%a") then sawPaladinCasting = true end
+					local gets = row.receives:GetText() or ""
+					if gets ~= "" then sawReceives = true end
+				end
+			end
+			T.check("the main tank is named on its own row", sawMainTank)
+			T.check("at least one paladin shows what it casts", sawPaladinCasting)
+			T.check("players show what they receive", sawReceives)
+
+			-- Only paladins cast anything.
+			local pally = {}
+			for _, p in ipairs(raid.paladins) do pally[p.name] = true end
+			local wrongCaster = 0
+			for _, row in ipairs(content.rosterRows) do
+				if row:IsShown() then
+					local casts = row.casts:GetText() or ""
+					if casts ~= "" and not pally[row.name:GetText()] then
+						wrongCaster = wrongCaster + 1
+					end
+				end
+			end
+			T.eq("nobody but a paladin is shown casting", wrongCaster, 0)
+
+			T.check("the column header is drawn",
+				(APP.MainFrame.testPane.rosterHead:GetText() or ""):find("RECEIVES") ~= nil)
+
 			-- And the main tank has to be findable, since it decides who
 			-- carries a pinned blessing.
+			-- The tank marker lives in its own column beside the name, not in
+			-- the trailing flags.
 			local mtMarked = false
 			for _, row in ipairs(content.rosterRows) do
-				if row:IsShown() and (row.marks:GetText() or ""):find("MAIN TANK") then
+				if row:IsShown() and (row.role:GetText() or ""):find("MAIN TANK") then
 					mtMarked = true
 				end
 			end
@@ -134,6 +168,8 @@ do
 		T.eq("the roster clears when test mode ends", stillShown, 0)
 		T.check("the roster heading hides too",
 			not APP.MainFrame.testPane.rosterLabel:IsShown())
+		T.check("the column header hides too",
+			not APP.MainFrame.testPane.rosterHead:IsShown())
 
 		-- Put it back so the rest of this block sees what it expects.
 		stub.click(generate)

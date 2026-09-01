@@ -560,6 +560,22 @@ end
 
 local function hideAll(list) for _, w in ipairs(list) do w:Hide() end end
 
+-- A paladin's talent spec spelled the way their profile is, so the two can be
+-- compared and only the genuinely different case is called out.
+local PALADIN_SPEC_LABEL = {
+	PROT = "Protection",
+	HOLY = "Holy",
+	RET = "Retribution",
+}
+
+--- Short blessing names, or a dash when there are none.
+local function blessingText(list)
+	if not list or #list == 0 then return "|cff4a4a4a--|r" end
+	local out = {}
+	for _, b in ipairs(list) do out[#out + 1] = B:Short(b) end
+	return table.concat(out, " ")
+end
+
 --- Clock time, when the client offers one.
 local function nowText()
 	if _G.date then return _G.date("%H:%M:%S") end
@@ -871,10 +887,17 @@ function UI:BuildTest()
 	pane.seed:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -250)
 
 	pane.rosterLabel = Theme:Text(pane, "label", "ROSTER", Theme.color.textFaint)
-	pane.rosterLabel:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -276)
+	pane.rosterLabel:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -272)
+
+	-- A header, because "Salv Kng" in a bare column is a puzzle rather than an
+	-- answer until something says which way round receives and casts go.
+	pane.rosterHead = Theme:Text(pane, "meta", "", Theme.color.textFaint)
+	pane.rosterHead:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -290)
+	pane.rosterHead:SetWidth(WIDTH - 76)
+	pane.rosterHead:SetJustifyH("LEFT")
 
 	local scroll, content = Theme:ScrollList(pane, WIDTH - 60, 200)
-	scroll:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -294)
+	scroll:SetPoint("TOPLEFT", pane, "TOPLEFT", 12, -306)
 	scroll:SetPoint("BOTTOMRIGHT", pane, "BOTTOMRIGHT", -12, 12)
 	pane.rosterContent = content
 	content.rosterRows = {}
@@ -896,12 +919,26 @@ function UI:RefreshRoster()
 	local raid = R:IsSimulated() and R.simulated or nil
 	if not raid then
 		pane.rosterLabel:Hide()
+		pane.rosterHead:Hide()
 		content:SetHeight(1)
 		return
 	end
 	pane.rosterLabel:Show()
+	pane.rosterHead:Show()
 
-	local groups = R:Breakdown(raid, APP.db.playerProfileOverrides)
+	-- Solve so the list can say what actually happens to each player. If the
+	-- solve fails the roster still renders, just without those two columns --
+	-- knowing who is in the raid is useful on its own.
+	local result
+	local ok, solved = pcall(function()
+		return S:Solve(raid, Config:SolverConfig())
+	end)
+	if ok then result = solved end
+
+	pane.rosterHead:SetText(("|cff6b6b6b%-12s %-8s %-9s %-18s %-20s %s|r"):format(
+		"PLAYER", "", "CLASS", "SPEC", result and "RECEIVES" or "", result and "CASTS" or ""))
+
+	local groups = R:Breakdown(raid, APP.db.playerProfileOverrides, result)
 	local y, heads, rows = 0, 0, 0
 
 	for _, group in ipairs(groups) do
@@ -928,16 +965,28 @@ function UI:RefreshRoster()
 				row:SetHeight(17)
 				row.name = Theme:Text(row, "body", "")
 				row.name:SetPoint("LEFT", row, "LEFT", 12, 0)
-				row.name:SetWidth(110)
+				row.name:SetWidth(96)
+				-- The tank marker sits beside the name rather than at the far
+				-- right, because which tank is the main tank decides which
+				-- paladin carries a pinned blessing.
+				row.role = Theme:Text(row, "meta", "")
+				row.role:SetPoint("LEFT", row, "LEFT", 110, 0)
+				row.role:SetWidth(56)
 				row.class = Theme:Text(row, "meta", "", Theme.color.textDim)
-				row.class:SetPoint("LEFT", row, "LEFT", 126, 0)
-				row.class:SetWidth(72)
+				row.class:SetPoint("LEFT", row, "LEFT", 170, 0)
+				row.class:SetWidth(64)
 				row.spec = Theme:Text(row, "meta", "", Theme.color.textDim)
-				row.spec:SetPoint("LEFT", row, "LEFT", 202, 0)
-				row.spec:SetWidth(150)
+				row.spec:SetPoint("LEFT", row, "LEFT", 238, 0)
+				row.spec:SetWidth(126)
+				row.receives = Theme:Text(row, "meta", "", Theme.color.textDim)
+				row.receives:SetPoint("LEFT", row, "LEFT", 368, 0)
+				row.receives:SetWidth(140)
+				row.casts = Theme:Text(row, "meta", "", Theme.color.textDim)
+				row.casts:SetPoint("LEFT", row, "LEFT", 512, 0)
+				row.casts:SetWidth(180)
 				row.marks = Theme:Text(row, "meta", "", Theme.color.textFaint)
-				row.marks:SetPoint("LEFT", row, "LEFT", 358, 0)
-				row.marks:SetWidth(200)
+				row.marks:SetPoint("LEFT", row, "LEFT", 696, 0)
+				row.marks:SetWidth(70)
 				content.rosterRows[rows] = row
 			end
 			row:SetWidth(WIDTH - 76)
@@ -946,15 +995,44 @@ function UI:RefreshRoster()
 			local c = Theme.classColor[entry.class]
 			row.name:SetText(entry.name)
 			if c then row.name:SetTextColor(c[1], c[2], c[3]) end
+
+			if entry.mainTank then row.role:SetText("|cffff8040MAIN TANK|r")
+			elseif entry.tank then row.role:SetText("|cffc79c6eoff-tank|r")
+			else row.role:SetText("") end
+
 			row.class:SetText(entry.classLabel)
-			row.spec:SetText(entry.spec)
+
+			-- For a paladin, name the talent spec too. It is what decides who
+			-- can cast Sanctuary, and it does not always match the profile:
+			-- a protection paladin who is not tanking is profiled retribution.
+			local spec = entry.spec
+			local talent = PALADIN_SPEC_LABEL[entry.paladinSpec or ""]
+			if entry.isPaladin and talent and talent ~= entry.spec then
+				spec = ("%s  |cfff58cba(%s)|r"):format(entry.spec, talent:lower())
+			end
+			row.spec:SetText(spec)
+
+			row.receives:SetText(blessingText(entry.receives))
+
+			if entry.isPaladin then
+				local text = blessingText(entry.casts)
+				if entry.pinnedTo then
+					text = text .. "  |cffe0b060pinned|r"
+				end
+				row.casts:SetText(text)
+			else
+				row.casts:SetText("")
+			end
 
 			local marks = {}
-			if entry.mainTank then marks[#marks + 1] = "|cffff8040MAIN TANK|r"
-			elseif entry.tank then marks[#marks + 1] = "|cffc79c6eoff-tank|r" end
-			if entry.isPaladin then marks[#marks + 1] = "|cfff58cbapaladin|r" end
-			if entry.guessed then marks[#marks + 1] = "|cff6b6b6bspec guessed|r" end
-			row.marks:SetText(table.concat(marks, "  "))
+			if entry.isPaladin and entry.canSanctuary then
+				marks[#marks + 1] = "|cff5a8fa8sanc|r"
+			end
+			if entry.isPaladin and not entry.canKings then
+				marks[#marks + 1] = "|cffe0575cno kings|r"
+			end
+			if entry.guessed then marks[#marks + 1] = "|cff6b6b6bguess|r" end
+			row.marks:SetText(table.concat(marks, " "))
 
 			row:Show()
 			y = y + 17
