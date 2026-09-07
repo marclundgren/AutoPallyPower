@@ -32,7 +32,8 @@ function Config:Defaults()
 		pins = {},
 		pinMode = "preference",
 		pinStrength = 8,
-		-- A protection paladin who is tanking carries Salvation for the raid.
+		-- A protection paladin who is tanking carries Salvation for the raid --
+		-- and, while that pin holds, every tank is given Sanctuary.
 		protPaladinSalvation = true,
 		-- How the priority list groups its profiles: "class" or "role".
 		-- Role is the default: the priorities are written per role, so the

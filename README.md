@@ -29,6 +29,11 @@ Sanctuary needs a Protection-talented paladin to exist at all.
 and the solver cannot produce a plan that violates it. Rather than show tanks a
 rule they cannot edit, Salvation is simply absent from tank priorities.
 
+Every tank list ends in Sanctuary where the raid can supply it — last, because
+it is worth less to them than Kings or Might, but present, because where a
+protection paladin is carrying Salvation for the raid it stops being optional.
+See [Rules and pins](#rules-and-pins).
+
 ## Talents are read, never assumed
 
 Blessing of Kings is a talent. Almost every raiding paladin takes it — but
@@ -115,6 +120,25 @@ The rule declines rather than misfiring. It needs a protection paladin who is
 actually tanking, and at least one *other* paladin who actually has Kings to
 hand them — a second paladin is not enough if they skipped the talent. With two
 protection paladins tanking, the one in the main tank slot is chosen.
+
+**While that pin holds, every tank gets Sanctuary.** The pin commits the raid's
+only Sanctuary caster to Salvation in every column, which leaves per-player
+overrides as the sole route to a tank — and left to the override threshold it
+does not get there. Sanctuary sits last on a warrior tank's list, so the swap is
+worth less than the click that buys it, and the tanks quietly end the night
+without the blessing the raid brought a protection paladin for. Under the pin it
+stops being an upgrade to be weighed and becomes part of the plan, marked in the
+override list the same way rule zero is.
+
+It is close to free, because the slot it spends is the least valuable thing that
+tank is holding — which is the pinned paladin's own Salvation whenever they are
+in the column, so the one swap usually satisfies rule zero at the same time.
+Across 120 generated raids the mandate was in force in 66 of them and cost 0.2
+extra overrides per raid.
+
+The mandate follows the pin rather than the rule that set it: pinning a
+protection paladin to Salvation by hand brings it with it, and turning the rule
+off takes it away.
 
 Measured across 322 generated raids meeting the preconditions: never worse for
 what players receive, better in 45, at a cost of roughly one extra override

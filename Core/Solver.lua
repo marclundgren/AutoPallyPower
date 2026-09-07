@@ -54,6 +54,11 @@ S.DEFAULT_OVERRIDE_PENALTY = 12
 -- Dominates every real score, so a tank holding Salvation is always corrected.
 S.SALV_ON_TANK = -10000
 
+-- The same device pointed the other way: while a paladin is pinned to
+-- Salvation, a tank who ends the solve without Sanctuary costs this much. See
+-- ComputeOverrides for why the override threshold cannot be trusted with it.
+S.TANK_WITHOUT_SANCTUARY = -10000
+
 -- Talent fit never outweighs what the raid actually wants: it only separates
 -- sets the members value identically. All member-facing values are integers, and
 -- talent weight is capped at 100 per blessing over at most six blessings, so
@@ -287,8 +292,10 @@ end
 --- Greedily find the per-player swaps worth making for one member.
 -- Each paladin can only hold one blessing on a given target, so applying an
 -- override consumes that paladin's slot for this member.
--- @return list of { paladin = idx, from = blessing, to = blessing, gain = n }, net gain
-function S:ComputeOverrides(member, blessingSet, holders, paladins, config)
+-- @param mandateSanctuary every tank must end up holding Sanctuary
+-- @return list of { paladin = idx, from = blessing, to = blessing, gain = n }, net gain,
+--         and the set of blessings the member ends up holding
+function S:ComputeOverrides(member, blessingSet, holders, paladins, config, mandateSanctuary)
 	-- What this member currently receives, keyed by the paladin delivering it.
 	local delivered = {}
 	local present = {}
@@ -302,6 +309,58 @@ function S:ComputeOverrides(member, blessingSet, holders, paladins, config)
 	end
 
 	local overrides, netGain = {}, 0
+	local locked = {}
+
+	-- Sanctuary on a tank, while a paladin is pinned to Salvation.
+	--
+	-- That paladin's greater blessing is spent on Salvation in every column, so
+	-- the only way Sanctuary reaches a tank is as a per-player override -- and
+	-- left to the threshold below it does not get there. Sanctuary sits last on
+	-- a warrior tank's list, so the swap is worth less than the click that buys
+	-- it, and the tank quietly ends the night without the blessing the raid
+	-- brought a protection paladin for. Under the pin it stops being an upgrade
+	-- worth weighing and becomes part of the plan, so it is taken first, before
+	-- the threshold gets a say.
+	--
+	-- Cost is minimised rather than ignored: the slot given up is the least
+	-- valuable thing this member is being handed, which is Salvation itself
+	-- whenever they hold it, so on a tank the same swap usually satisfies rule
+	-- zero as well.
+	if mandateSanctuary and member.tank then
+		if present[B.SANCTUARY] then
+			-- The column already delivers it. Hold that paladin still, or the
+			-- threshold below will happily trade Sanctuary for Might: worth 17
+			-- more to a warrior tank, and 17 is over the threshold.
+			for pi = 1, #paladins do
+				if delivered[pi] == B.SANCTUARY then locked[pi] = true end
+			end
+		else
+			local worstPi, worstFrom, worstValue
+			for pi = 1, #paladins do
+				local from = delivered[pi]
+				local pally = paladins[pi]
+				if from and pally.canCast and pally.canCast[B.SANCTUARY] then
+					local value = self:Value(member, from, config)
+					if worstValue == nil or value < worstValue then
+						worstPi, worstFrom, worstValue = pi, from, value
+					end
+				end
+			end
+			if worstPi then
+				local gain = self:Value(member, B.SANCTUARY, config) - worstValue
+				overrides[#overrides + 1] = {
+					paladin = worstPi, from = worstFrom, to = B.SANCTUARY,
+					gain = gain, mandatory = true,
+				}
+				netGain = netGain + gain - config.overridePenalty
+				delivered[worstPi] = B.SANCTUARY
+				present[worstFrom] = nil
+				present[B.SANCTUARY] = true
+				-- Nothing below may trade it away again.
+				locked[worstPi] = true
+			end
+		end
+	end
 
 	-- At most one swap per paladin, so this cannot loop more than #paladins times.
 	for _ = 1, #paladins do
@@ -311,7 +370,7 @@ function S:ComputeOverrides(member, blessingSet, holders, paladins, config)
 			local fromValue = self:Value(member, from, config)
 			local pally = paladins[pi]
 			for _, to in ipairs(B.ALL) do
-				if not present[to] and pally.canCast and pally.canCast[to] then
+				if not locked[pi] and not present[to] and pally.canCast and pally.canCast[to] then
 					local gain = self:Value(member, to, config) - fromValue
 					-- Strict > keeps ties deterministic: the first candidate in
 					-- B.ALL order wins.
@@ -335,7 +394,7 @@ function S:ComputeOverrides(member, blessingSet, holders, paladins, config)
 		end
 	end
 
-	return overrides, netGain
+	return overrides, netGain, present
 end
 
 --------------------------------------------------------------------------
@@ -343,7 +402,7 @@ end
 --------------------------------------------------------------------------
 
 --- Score one candidate blessing set against one class column.
-function S:ScoreSet(members, blessingSet, holders, paladins, config)
+function S:ScoreSet(members, blessingSet, holders, paladins, config, mandateSanctuary)
 	local total = 0
 	local memberOverrides = {}
 
@@ -352,8 +411,16 @@ function S:ScoreSet(members, blessingSet, holders, paladins, config)
 		for j = 1, #blessingSet do
 			total = total + self:Value(m, blessingSet[j], config)
 		end
-		local ovr, gain = self:ComputeOverrides(m, blessingSet, holders, paladins, config)
+		local ovr, gain, holds = self:ComputeOverrides(
+			m, blessingSet, holders, paladins, config, mandateSanctuary)
 		total = total + gain
+		-- Stated the same way as rule zero: a state the plan must not end in,
+		-- priced above anything the rest of the model can offer. A set that
+		-- leaves no route to Sanctuary for a tank loses to one that does, so the
+		-- solver will pull the pinned paladin into the column to open one.
+		if mandateSanctuary and m.tank and not holds[B.SANCTUARY] then
+			total = total + self.TANK_WITHOUT_SANCTUARY
+		end
 		if #ovr > 0 then
 			memberOverrides[m.name] = { list = ovr, tank = m.tank, role = m.role }
 		end
@@ -363,7 +430,7 @@ function S:ScoreSet(members, blessingSet, holders, paladins, config)
 end
 
 --- Solve a single class column.
-function S:SolveClass(members, paladins, config, pins)
+function S:SolveClass(members, paladins, config, pins, mandateSanctuary)
 	if #members == 0 or #paladins == 0 then
 		return { blessings = {}, holders = {}, overrides = {}, score = 0, ranked = 0, talentWeight = 0 }
 	end
@@ -391,7 +458,8 @@ function S:SolveClass(members, paladins, config, pins)
 		if #set <= maxSize then
 			local holders, talentWeight, pinBonus = self:MatchBlessings(set, paladins, pins, pinOpts)
 			if holders then
-				local score, overrides = self:ScoreSet(members, set, holders, paladins, config)
+				local score, overrides = self:ScoreSet(
+					members, set, holders, paladins, config, mandateSanctuary)
 				local ranked = score + (talentWeight or 0) * self.TALENT_TIEBREAK + (pinBonus or 0)
 				if best == nil or ranked > best.ranked then
 					best = {
@@ -432,6 +500,19 @@ function S:Solve(raid, config)
 	-- works within, rather than adjusting its output afterwards.
 	local pins, appliedRules = APP.Rules:Pins(members, paladins, config)
 
+	-- Pinning the raid's Sanctuary caster to Salvation commits their greater
+	-- blessing in every column, which leaves per-player overrides as the only
+	-- route to a tank. So the pin brings a second convention with it: while it
+	-- is in force, every tank gets Sanctuary. Stated over the pin rather than
+	-- over the rule that produced it, since a pin set by hand does exactly the
+	-- same thing to the plan.
+	local mandateSanctuary = false
+	for _, p in ipairs(paladins) do
+		if pins[p.name] == B.SALVATION and p.canCast and p.canCast[B.SANCTUARY] then
+			mandateSanctuary = true
+		end
+	end
+
 	-- Bucket members into PallyPower's class columns.
 	local byClass = {}
 	for i = 1, B.MAX_CLASSES do byClass[i] = {} end
@@ -448,6 +529,7 @@ function S:Solve(raid, config)
 		members = members,
 		pins = pins,
 		appliedRules = appliedRules,
+		mandateSanctuary = mandateSanctuary,
 		pinMode = config.pinMode or "preference",
 		grid = {},        -- [paladinName][classID] = blessing
 		overrides = {},   -- flat list for the adapter
@@ -464,7 +546,7 @@ function S:Solve(raid, config)
 
 	for classID = 1, B.MAX_CLASSES do
 		local columnMembers = byClass[classID]
-		local solved = self:SolveClass(columnMembers, paladins, config, pins)
+		local solved = self:SolveClass(columnMembers, paladins, config, pins, mandateSanctuary)
 
 		for blessing, pi in pairs(solved.holders) do
 			result.grid[paladins[pi].name][classID] = blessing
@@ -472,7 +554,8 @@ function S:Solve(raid, config)
 
 		for memberName, entry in pairs(solved.overrides) do
 			for _, o in ipairs(entry.list) do
-				local mandatory = (entry.tank and o.from == B.SALVATION) or false
+				local mandatory = o.mandatory
+					or (entry.tank and o.from == B.SALVATION) or false
 				result.overrides[#result.overrides + 1] = {
 					paladin = paladins[o.paladin].name,
 					classID = classID,
@@ -559,6 +642,23 @@ function S:Validate(result)
 		if m.tank and delivered[m.name][B.SALVATION] then
 			result.warnings[#result.warnings + 1] =
 				("RULE ZERO VIOLATED: tank %s would keep Salvation"):format(m.name)
+		end
+	end
+
+	-- The mandate is a preference the solver cannot normally fail, since the
+	-- pinned paladin can join any column. Say so rather than let a tank go
+	-- without it silently on the day that reasoning stops holding.
+	if result.mandateSanctuary then
+		local missed = {}
+		for _, m in ipairs(result.members) do
+			if m.tank and not delivered[m.name][B.SANCTUARY] then
+				missed[#missed + 1] = m.name
+			end
+		end
+		if #missed > 0 then
+			result.warnings[#result.warnings + 1] =
+				("No route to Sanctuary for %s -- no paladin holding a blessing for their class can cast it.")
+					:format(table.concat(missed, ", "))
 		end
 	end
 

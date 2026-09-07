@@ -90,6 +90,91 @@ do
 end
 
 --------------------------------------------------------------------------
+print("== under the pin, every tank gets Sanctuary ==")
+do
+	-- The raid leader's own default, and the reason the pin exists: Salvation
+	-- on every class, Sanctuary on himself and on anyone else tanking. A bear
+	-- is the case that gets lost without the mandate -- Sanctuary sits last on
+	-- a druid tank's list, well under the override threshold.
+	local raid = baseRaid()
+	table.insert(raid.members, member("Bearpal", "DRUID", "DRUID_TANK", true, "MAINASSIST"))
+
+	local r = S:Solve(raid, cfg())
+	T.check("the mandate is in force", r.mandateSanctuary)
+
+	for _, m in ipairs(r.members) do
+		if m.tank then
+			T.check("tank receives Sanctuary: " .. m.name,
+				r.delivered[m.name][B.SANCTUARY] == true)
+		end
+	end
+	T.eq("and nobody is left unreachable", #r.warnings, 0)
+
+	-- And it must not cost the thing the pin is for. Any column with somebody
+	-- in it who is not tanking still gets greater Salvation; the lone bear's
+	-- column is the exception the pin is explicitly allowed to lose, since
+	-- greater Salvation on a column of nothing but tanks is rule zero for
+	-- everyone in it.
+	for c = 1, B.MAX_CLASSES do
+		local col = r.perClass[c]
+		local hasDPS = false
+		for _, m in ipairs(col.members or {}) do
+			if not m.tank then hasDPS = true end
+		end
+		if hasDPS then
+			T.eq("the pinned paladin still carries Salvation for class " .. c,
+				r.grid["Protpal"][c], B.SALVATION)
+		end
+	end
+	T.eq("the bear's column takes Sanctuary outright instead",
+		r.grid["Protpal"][B.CLASS_IDS.DRUID], B.SANCTUARY)
+
+	-- Everywhere else it arrives as the pinned paladin spending his own greater
+	-- Salvation on that one target, which is what makes it free.
+	local byOverride = {}
+	for _, o in ipairs(r.overrides) do
+		if o.blessing == B.SANCTUARY then
+			byOverride[o.target] = true
+			T.eq("cast by the pinned paladin", o.paladin, "Protpal")
+			T.eq("replacing his own Salvation", o.replaces, B.SALVATION)
+			T.check("and marked as not optional", o.mandatory == true)
+		end
+	end
+	T.check("the warrior tank is served by an override", byOverride["Protwar"])
+	T.check("so is the paladin himself", byOverride["Protpal"])
+
+	-- Non-tanks are not swept up in it.
+	for _, m in ipairs(r.members) do
+		if not m.tank then
+			T.check("no Sanctuary for " .. m.name,
+				r.delivered[m.name][B.SANCTUARY] ~= true)
+		end
+	end
+end
+
+--------------------------------------------------------------------------
+print("== the mandate follows the pin, not the rule that set it ==")
+do
+	-- Off with the rule.
+	local off = S:Solve(baseRaid(), cfg({ protPaladinSalvation = false }))
+	T.check("no mandate without a pin", off.mandateSanctuary == false)
+
+	-- On again when the same pin is set by hand.
+	local manual = S:Solve(baseRaid(),
+		cfg({ protPaladinSalvation = false, pins = { Protpal = B.SALVATION } }))
+	T.check("a hand-set Salvation pin brings it back", manual.mandateSanctuary)
+	T.check("and the warrior tank gets Sanctuary",
+		manual.delivered["Protwar"][B.SANCTUARY] == true)
+
+	-- A pin to something else does not, since the paladin's greater blessing
+	-- is then free to reach the tanks on its own.
+	local elsewhere = S:Solve(baseRaid(),
+		cfg({ protPaladinSalvation = false, pins = { Protpal = B.WISDOM } }))
+	T.check("a pin to another blessing does not mandate anything",
+		elsewhere.mandateSanctuary == false)
+end
+
+--------------------------------------------------------------------------
 print("== preconditions: the rule declines rather than misfiring ==")
 do
 	-- Disabled by setting.

@@ -246,7 +246,8 @@ handlers.protsalv = function(args)
 	out(("Prot paladin Salvation rule %s."):format(arg == "on" and "enabled" or "disabled"))
 	if arg == "on" then
 		out("A protection paladin who is tanking will carry Salvation for every class,")
-		out("provided another paladin has Kings to give them.")
+		out("provided another paladin has Kings to give them. While that pin holds,")
+		out("every tank is given Sanctuary rather than left to the override threshold.")
 	end
 end
 
