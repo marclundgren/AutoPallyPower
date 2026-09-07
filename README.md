@@ -77,24 +77,24 @@ weight on a caster.
 
 ## When your assignments will not stick
 
-Another paladin's client only accepts assignments you set for them if you are
-raid leader or assistant, or if they have ticked **Free Assignment** in
-PallyPower's own window. Two details are easy to get caught by:
+Another paladin's client accepts assignments from you only if they have ticked
+**Free Assignment** in PallyPower's own window.
 
-- **In a party there is no assistant.** PallyPower credits only the party
-  leader, so being in a party you did not make counts for nothing.
-- **Inside an instance-finder group it credits nobody at all.** Free Assignment
-  is the only route there.
+**Raid rank does not enter into it.** Being leader or assistant is the obvious
+guess — it is what PallyPower's own options text implies — but tested both ways
+in a live raid, leader, assistant and plain raid member set assignments
+identically. Assist will not open a closed row, and losing assist will not
+close an open one, so AutoPallyPower does not consult rank anywhere.
 
-AutoPallyPower reads this rather than guessing. It learns each paladin's Free
-Assignment state from the broadcast PallyPower already sends, and treats a
-paladin who has never spoken on that channel as not having the addon installed.
+It learns each paladin's Free Assignment state from the broadcast PallyPower
+already sends, and treats a paladin who has never spoken on that channel as not
+having the addon installed. A paladin who is running it but has not yet said
+either way is reported as unknown rather than assumed open.
 
-`/app status` shows your own authority plus, for each paladin, whether they are
-running PallyPower, their Free Assignment state, and whether you can set them.
-The Raid Plan tab warns before you apply, and `/app apply` **skips** anyone it
-cannot set rather than writing a plan into your own grid that nobody else
-received.
+`/app status` shows, for each paladin, whether they are running PallyPower,
+their Free Assignment state, and whether you can set them. The Raid Plan tab
+warns before you apply, and `/app apply` **skips** anyone it cannot set rather
+than writing a plan into your own grid that nobody else received.
 
 ## Rules and pins
 

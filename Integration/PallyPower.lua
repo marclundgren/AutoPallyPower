@@ -105,8 +105,8 @@ function PP:OnAddonMessage(prefix, message, _, sender)
 		changed = true
 	end
 
-	-- Sent alongside SELF whenever they sync. Whether a paladin accepts
-	-- assignments from a non-leader turns entirely on this.
+	-- Sent alongside SELF whenever they sync. Whether a paladin accepts our
+	-- assignments turns entirely on this -- raid rank does not enter into it.
 	if message:find("FREEASSIGN YES", 1, true) then
 		if self.freeAssign[sender] ~= true then changed = true end
 		self.freeAssign[sender] = true
@@ -116,17 +116,6 @@ function PP:OnAddonMessage(prefix, message, _, sender)
 	end
 
 	return changed
-end
-
---- Whether our authority has changed since last asked.
--- Being promoted mid-raid is normal, and the window has to notice: everything
--- about who we can set assignments for turns on it.
-function PP:AuthorityChanged()
-	local now = self:HaveAuthority()
-	local was = self.__lastAuthority
-	self.__lastAuthority = now
-	if was == nil then return false, now end
-	return (was ~= now), now
 end
 
 --------------------------------------------------------------------------
@@ -140,31 +129,15 @@ function PP:HasPallyPower(name)
     return self.heard[name] == true
 end
 
---- Does this client carry enough authority for other paladins to accept what
---- we send them?
---
--- Mirrors PallyPower's own rule from the sending side. Two things are easy to
--- get wrong here. In a party there is no assistant -- PallyPower credits only
--- the party leader -- so being "in charge" of a party you did not make counts
--- for nothing. And inside an instance-finder group it credits nobody at all,
--- so free assignment is the only route.
-function PP:HaveAuthority()
-	local instanceGroup = _G.LE_PARTY_CATEGORY_INSTANCE
-		and _G.IsInGroup and _G.IsInGroup(_G.LE_PARTY_CATEGORY_INSTANCE)
-		and _G.IsInInstance and _G.IsInInstance()
-	if instanceGroup then return false end
-
-	if _G.IsInRaid and _G.IsInRaid() then
-		return (_G.UnitIsGroupLeader and _G.UnitIsGroupLeader("player"))
-			or (_G.UnitIsGroupAssistant and _G.UnitIsGroupAssistant("player")) or false
-	end
-	return (_G.UnitIsGroupLeader and _G.UnitIsGroupLeader("player")) or false
-end
-
 --- Will this paladin's client accept an assignment from us?
+--
+-- Raid rank plays no part in this, which is not what PallyPower's options
+-- panel leads you to expect. Tested both ways in a live raid: as leader, as
+-- assistant and as a plain raid member, assignments landed identically. So
+-- there is no group-wide notion of "authority" here at all -- the answer is
+-- per paladin, and it is their own Free Assignment setting that decides it.
 function PP:CanControl(name)
 	if name and name == self.selfName then return true end
-	if self:HaveAuthority() then return true end
 	return self.freeAssign[name] == true
 end
 
@@ -178,15 +151,12 @@ function PP:ControlStatus(name)
 		return false, "NO_PALLYPOWER",
 			"has not synced -- PallyPower may not be installed"
 	end
-	if self:HaveAuthority() then
-		return true, "AUTHORITY", "you are leader or assistant"
-	end
 	if self.freeAssign[name] == true then
 		return true, "FREE_ASSIGN", "free assignment is on"
 	end
 	if self.freeAssign[name] == false then
 		return false, "FREE_ASSIGN_OFF",
-			"free assignment is off and you are not leader or assistant"
+			"free assignment is off -- being leader or assistant does not override it"
 	end
 	return false, "UNKNOWN", "free assignment state not yet known"
 end

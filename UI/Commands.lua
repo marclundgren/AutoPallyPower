@@ -126,8 +126,8 @@ handlers.apply = function()
 		for _, b in ipairs(stats.blocked) do
 			out(("   %s -- %s"):format(b.name, b.why))
 		end
-		out("|cff9d9d9dFix either way: get raid assist, or ask them to tick Free Assignment")
-		out("in PallyPower's own window. In a party only the party leader counts.|r")
+		out("|cff9d9d9dAsk them to tick Free Assignment in PallyPower's own window.")
+		out("Raid rank makes no difference -- assist does not open a closed row.|r")
 	end
 	if #result.warnings > 0 then
 		for _, w in ipairs(result.warnings) do out("|cffff2020" .. w .. "|r") end
@@ -425,10 +425,6 @@ handlers.status = function()
 		-- is whatever it remembered from previous raids, not who is with you.
 		out("|cff9d9d9d  (remembered from previous raids -- PallyPower only syncs while grouped)|r")
 	end
-	out(("Your authority: %s"):format(PP:HaveAuthority()
-		and "|cff1eff00leader or assistant -- you can set anyone|r"
-		or "|cffff2020none -- you can only set paladins with Free Assignment on|r"))
-
 	for _, p in ipairs(pallys) do
 		local caps = {}
 		for _, b in ipairs(B.ALL) do
@@ -476,23 +472,6 @@ end
 --------------------------------------------------------------------------
 -- Dispatch
 --------------------------------------------------------------------------
-
---- Say something when our authority changes, and re-solve.
--- Being promoted mid-raid is common and easy to miss; without a word in chat
--- the only sign is a warning quietly disappearing from a tab you may not have
--- open.
-function Commands:CheckAuthority()
-	local changed, now = PP:AuthorityChanged()
-	if not changed then return false end
-
-	if now then
-		out("|cff1eff00You are now leader or assistant|r -- you can set assignments for every paladin.")
-	else
-		out("|cffff2020You are no longer leader or assistant|r -- you can only set paladins with Free Assignment on.")
-	end
-	if APP.MainFrame then APP.MainFrame:ScheduleRefresh(0) end
-	return true
-end
 
 function Commands:Handle(input)
 	input = (input or ""):match("^%s*(.-)%s*$")
@@ -548,9 +527,6 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
 		-- Read our own talents straight away rather than waiting for the first
 		-- world event, so /app status is right the moment the addon loads.
 		PP:ScanSelf()
-		-- Prime the baseline so the first real promotion registers as a change
-		-- rather than as "we have never looked".
-		PP:AuthorityChanged()
 
 		if APP.Minimap then APP.Minimap:Create() end
 
@@ -572,9 +548,10 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
 
 	elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED"
 		or event == "PARTY_LEADER_CHANGED" then
-		-- Someone joined, left, changed role, or handed out assist. These fire
-		-- in bursts, so the refresh is coalesced rather than run once per event.
-		Commands:CheckAuthority()
+		-- Someone joined, left, or changed role. These fire in bursts, so the
+		-- refresh is coalesced rather than run once per event. Rank changes ride
+		-- along on the same events and are ignored: they do not affect who we
+		-- can set, only who the raid listens to in chat.
 		if APP.MainFrame then APP.MainFrame:ScheduleRefresh() end
 
 	else

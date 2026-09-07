@@ -475,38 +475,37 @@ do
 end
 
 --------------------------------------------------------------------------
-print("== being promoted to assistant is noticed without a reload ==")
+print("== the warning tracks Free Assignment, not raid rank ==")
 do
 	local pane = APP.MainFrame.planPane
 	stub.group.leader, stub.group.assistant = false, false
-	APP.PP:AuthorityChanged()          -- prime the baseline
 	APP.MainFrame:RefreshPlan()
 
-	T.check("without authority, the warning names who we cannot set",
-		pane.warn:IsShown(), "expected a warning while not leader or assistant")
+	T.check("a paladin who has not said either way is named as unsettable",
+		pane.warn:IsShown(), "expected a warning while Otherpal's state is unknown")
 
+	-- Being handed assist used to clear this. It no longer does, because it
+	-- never actually changed whether the assignment landed.
 	local before = #chat
 	stub.group.assistant = true
 	stub.fireEvent("GROUP_ROSTER_UPDATE")
 	stub.runTimers()
 
-	T.check("the stale warning clears once we have assist", not pane.warn:IsShown())
-
+	T.check("promotion does not clear the warning", pane.warn:IsShown())
 	local announced = false
 	for i = before + 1, #chat do
 		if tostring(chat[i]):find("leader or assistant") then announced = true end
 	end
-	T.check("and it is said out loud, since the tab may not be open", announced)
+	T.check("and nothing is announced about rank", announced == false)
 
-	local before2 = #chat
-	stub.group.assistant = false
-	stub.fireEvent("PARTY_LEADER_CHANGED")
+	-- What does clear it is the paladin's own broadcast.
+	stub.fireEvent("CHAT_MSG_ADDON", "PLPWR",
+		"SELF 726131413000@nnnnnnnnn | FREEASSIGN YES", "RAID", "Otherpal")
 	stub.runTimers()
-	local demoted = false
-	for i = before2 + 1, #chat do
-		if tostring(chat[i]):find("no longer") then demoted = true end
-	end
-	T.check("losing assist is announced as well", demoted)
+
+	T.check("free assignment clears it", not pane.warn:IsShown())
+
+	stub.group.assistant = false
 end
 
 --------------------------------------------------------------------------
