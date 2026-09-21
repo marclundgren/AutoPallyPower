@@ -15,6 +15,11 @@
 -- Getting a tank wrong is the expensive error: it is the difference between a
 -- tank holding Salvation and not. Roles cover that without guessing, and
 -- crucially they work in a party, where MAINTANK slots do not exist at all.
+--
+-- The same role signal also stands in for a paladin's own spec when step 3
+-- comes back unknown -- no PallyPower, or simply not heard from yet -- so the
+-- raid is never reported as lacking a holy or prot paladin just because one
+-- has not synced. See the ROLE_SPEC_FALLBACK below.
 local ADDON, APP = ...
 
 local B = APP.Blessings
@@ -114,12 +119,29 @@ function R:ScanLive(savedProfiles)
 	-- Paladin capability data comes from the PallyPower adapter, which is the
 	-- only place that knows who can cast what.
 	local ppPaladins = APP.PP:GetPaladins()
-	local inGroup = {}
+	local inGroup, paladinMember = {}, {}
 	for _, m in ipairs(members) do
-		if m.class == "PALADIN" then inGroup[m.name] = true end
+		if m.class == "PALADIN" then
+			inGroup[m.name] = true
+			paladinMember[m.name] = m
+		end
 	end
+
+	-- A paladin's real spec, from PallyPower's sync, is used whenever we have
+	-- it. When we do not -- no PallyPower installed, or we simply have not
+	-- heard from them this session -- fall back to the role they picked, the
+	-- same signal P:ForMember already trusts for that paladin's own priority
+	-- list. Otherwise "unknown" reads as "no holy/prot paladin in this raid"
+	-- on the plan, which is a much stronger and more visible claim than the
+	-- addon actually has grounds for.
+	local ROLE_SPEC_FALLBACK = { HEALER = "HOLY", DAMAGER = "RET" }
 	for _, p in ipairs(ppPaladins) do
 		if inGroup[p.name] then
+			if p.spec == "UNKNOWN" then
+				local m = paladinMember[p.name]
+				local fallback = m and (m.tank and "PROT" or ROLE_SPEC_FALLBACK[m.assignedRole])
+				if fallback then p.spec = fallback end
+			end
 			paladins[#paladins + 1] = p
 		end
 	end

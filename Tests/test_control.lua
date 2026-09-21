@@ -215,4 +215,57 @@ do
 	_G.PallyPower, _G.PallyPower_Assignments, _G.PallyPower_NormalAssignments = nil, nil, nil
 end
 
+--------------------------------------------------------------------------
+print("== AutoSync asks for a resync only when someone has never been heard from ==")
+do
+	fresh()
+	PP.lastAutoSync = nil
+	local sent = {}
+	_G.PallyPower = { SendMessage = function(_, msg) sent[#sent + 1] = msg end, UpdateLayout = function() end }
+	_G.PallyPower_Assignments = {}
+	_G.GetNumGroupMembers = function() return 3 end
+	_G.GetTime = function() return 1000 end
+
+	local askedNothing = PP:AutoSync({ { name = "Rageblue", class = "PALADIN" } })
+	T.check("does not ask when there is nothing missing", askedNothing == false)
+	T.eq("no message sent", #sent, 0)
+
+	-- A paladin we have never heard a peep from.
+	local members = {
+		{ name = "Rageblue", class = "PALADIN" },
+		{ name = "Newpally", class = "PALADIN" },
+	}
+	local asked = PP:AutoSync(members)
+	T.check("asks once a genuinely unheard paladin shows up", asked)
+	T.eq("REQ went out", sent[1], "REQ")
+
+	-- Immediately again: still inside the cooldown window.
+	sent = {}
+	local askedAgain = PP:AutoSync(members)
+	T.check("does not spam within the cooldown", askedAgain == false)
+	T.eq("nothing sent the second time", #sent, 0)
+
+	-- Once the cooldown has passed, it is allowed to ask again.
+	_G.GetTime = function() return 1000 + PP.AUTO_SYNC_COOLDOWN + 1 end
+	local askedAfterCooldown = PP:AutoSync(members)
+	T.check("asks again once the cooldown has passed", askedAfterCooldown)
+	T.eq("REQ went out again", sent[1], "REQ")
+
+	-- Hearing from them at all clears the need, regardless of cooldown.
+	PP.heard.Newpally = true
+	sent = {}
+	_G.GetTime = function() return 1000 + 2 * (PP.AUTO_SYNC_COOLDOWN + 1) end
+	local askedOnceHeard = PP:AutoSync(members)
+	T.check("stops asking once they have been heard from", askedOnceHeard == false)
+
+	-- Never treated as "missing" just because we do not hear our own broadcast.
+	sent = {}
+	_G.GetTime = function() return 1000 + 3 * (PP.AUTO_SYNC_COOLDOWN + 1) end
+	local askedForSelf = PP:AutoSync({ { name = "Rageblue", class = "PALADIN" } })
+	T.check("never treats our own silence as missing data", askedForSelf == false)
+
+	_G.PallyPower, _G.PallyPower_Assignments, _G.GetNumGroupMembers, _G.GetTime = nil, nil, nil, nil
+	PP.lastAutoSync = nil
+end
+
 T.report("control")

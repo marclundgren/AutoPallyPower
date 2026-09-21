@@ -1,7 +1,5 @@
 local h = dofile((os.getenv("APP_ROOT") or ".") .. "/Tests/harness.lua")
 local APP, T = h.APP, h.T
-local chunk = assert(loadfile((os.getenv("APP_ROOT") or ".") .. "/Core/Roster.lua"))
-chunk("AutoPallyPower", APP)
 
 local B, S, P, R, PP = APP.Blessings, APP.Solver, APP.Profiles, APP.Roster, APP.PP
 
@@ -200,6 +198,63 @@ do
 				T.check("a known paladin spec is not a guess", m.guessed == false)
 			end
 		end
+	end)
+end
+
+--------------------------------------------------------------------------
+print("== an unheard-from paladin falls back to their role, not to 'no holy/prot paladin' ==")
+do
+	withGroup({
+		raid = true,
+		selfSpec = "RET",
+		members = {
+			{ name = "Retpally",    class = "PALADIN", role = "DAMAGER" },
+			{ name = "Mysteryholy", class = "PALADIN", role = "HEALER" },
+			{ name = "Mysterytank", class = "PALADIN", raidRole = "MAINTANK" },
+			{ name = "Tankwarr",    class = "WARRIOR", role = "TANK" },
+		},
+	}, function()
+		-- Simulate never having received a PLPWR broadcast from either of
+		-- them: PallyPower has a row (someone assigned or was assigned a
+		-- blessing at some point), but this client has no talent data.
+		PP.observed.Mysteryholy, PP.heard.Mysteryholy = nil, nil
+		PP.observed.Mysterytank, PP.heard.Mysterytank = nil, nil
+
+		local raid = R:ScanLive(nil)
+		T.eq("all three paladins still counted", #raid.paladins, 3)
+
+		local specByName = {}
+		for _, p in ipairs(raid.paladins) do specByName[p.name] = p.spec end
+		T.eq("healer role falls back to holy", specByName.Mysteryholy, "HOLY")
+		T.eq("main tank slot falls back to prot", specByName.Mysterytank, "PROT")
+		T.eq("a real, heard-from spec is untouched", specByName.Retpally, "RET")
+
+		local result = S:Solve(raid, S.defaultConfig())
+		T.check("the raid is credited with a holy paladin", result.context.holyPaladin)
+		T.check("the raid is credited with a prot paladin", result.context.protPaladin)
+	end)
+end
+
+--------------------------------------------------------------------------
+print("== an unheard-from paladin with no role at all stays genuinely unknown ==")
+do
+	withGroup({
+		raid = false,
+		selfSpec = "RET",
+		members = {
+			{ name = "Retpally", class = "PALADIN", role = "DAMAGER" },
+			{ name = "Mystery",  class = "PALADIN" },
+		},
+	}, function()
+		PP.observed.Mystery, PP.heard.Mystery = nil, nil
+
+		local raid = R:ScanLive(nil)
+		local specByName = {}
+		for _, p in ipairs(raid.paladins) do specByName[p.name] = p.spec end
+		T.eq("no talent data and no role means still unknown", specByName.Mystery, "UNKNOWN")
+
+		local result = S:Solve(raid, S.defaultConfig())
+		T.check("no false claim of a holy paladin", not result.context.holyPaladin)
 	end)
 end
 
