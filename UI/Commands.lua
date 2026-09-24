@@ -41,6 +41,15 @@ function Commands:Solve()
 	if raid.empty then
 		return nil, "Not in a group. Use /app test to try a simulated raid."
 	end
+
+	-- Close the gap where a paladin already in the raid before we logged in
+	-- or joined sits at "unknown" forever because nothing ever asked them to
+	-- resync. Bounded and skipped in test mode, since PP:AutoSync only fires
+	-- when there is genuinely someone we have never heard from.
+	if raid.live then
+		PP:AutoSync(raid.members)
+	end
+
 	if #raid.paladins == 0 then
 		return nil, "No paladins found. PallyPower needs to have seen at least one."
 	end

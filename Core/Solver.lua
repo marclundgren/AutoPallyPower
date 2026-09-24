@@ -95,7 +95,13 @@ function S:BuildContext(paladins, config)
 	local holy, prot = false, false
 	for i = 1, #paladins do
 		local p = paladins[i]
+		-- p.spec is the real talent-derived spec when PallyPower has synced
+		-- it, or a role-based fallback (Roster:ScanLive) when it has not --
+		-- either way it is the best guess available, and treating "unknown"
+		-- as "no holy/prot paladin exists" would be a stronger, more visible
+		-- claim than the addon actually has grounds for.
 		if p.spec == "HOLY" then holy = true end
+		if p.spec == "PROT" then prot = true end
 		if p.canCast and p.canCast[B.SANCTUARY] then prot = true end
 	end
 	return {

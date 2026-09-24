@@ -419,8 +419,10 @@ end
 -- one of our own. Replies arrive asynchronously, which is why callers re-solve
 -- again shortly after rather than immediately expecting new data.
 --
--- Deliberately not automatic: it makes every paladin in the raid rebroadcast,
--- so it belongs behind a button the user pressed.
+-- Making every paladin in the raid rebroadcast on a whim would be rude, so
+-- this itself stays behind a button the user pressed (/app refresh). The one
+-- exception is AutoSync below, which calls it on the user's behalf but only
+-- for the narrow case a button cannot cover.
 function PP:RequestSync()
 	if not self:IsAvailable() then return false end
 	if (_G.GetNumGroupMembers and _G.GetNumGroupMembers() or 0) == 0 then
@@ -428,6 +430,45 @@ function PP:RequestSync()
 	end
 	_G.PallyPower:SendMessage("REQ")
 	return true
+end
+
+-- Minimum spacing between automatic resync requests, so a paladin who never
+-- ends up running PallyPower does not get re-asked on every roster tick.
+PP.AUTO_SYNC_COOLDOWN = 20
+PP.lastAutoSync = nil
+
+--- Ask the group to resync when a paladin in the raid has never sent us a
+--- single PLPWR message, without waiting for the user to notice and press
+--- Refresh.
+--
+-- A spec change on an existing paladin is not something the client reports,
+-- so re-asking constantly "just in case" is the wrong default -- that case
+-- stays manual (RequestSync's own doc comment). But a paladin we have *never*
+-- heard from at all is different: nothing we do will ever populate their
+-- data on its own, because PallyPower only re-broadcasts SELF when its own
+-- client joins a group or its spellbook changes, not because someone else
+-- (us) later joined or opened a panel. A paladin who was already sitting in
+-- the raid before we logged in or zoned in falls through that gap, and their
+-- real spec then reads as "unknown" -- which looks identical to "no holy
+-- paladin here" on the plan. One bounded REQ closes it.
+function PP:AutoSync(members)
+	local missing = false
+	for _, m in ipairs(members or {}) do
+		if m.class == "PALADIN" and m.name ~= self.selfName and not self.heard[m.name] then
+			missing = true
+			break
+		end
+	end
+	if not missing then return false end
+
+	local now = (_G.GetTime and _G.GetTime()) or 0
+	if self.lastAutoSync and now - self.lastAutoSync < self.AUTO_SYNC_COOLDOWN then
+		return false
+	end
+
+	local asked = self:RequestSync()
+	if asked then self.lastAutoSync = now end
+	return asked
 end
 
 --------------------------------------------------------------------------

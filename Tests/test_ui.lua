@@ -422,6 +422,54 @@ do
 end
 
 --------------------------------------------------------------------------
+print("== a paladin already in the raid but never heard from triggers its own resync ==")
+do
+	local stats = APP.MainFrame.planPane.stats
+	local sent = {}
+	_G.PallyPower.SendMessage = function(_, msg) sent[#sent + 1] = msg end
+	APP.PP.lastAutoSync = nil
+
+	-- Solens joined before we ever received a PLPWR broadcast from them:
+	-- PallyPower has a row for them (stub.setGroup gives every paladin one),
+	-- but this client has no talent data at all. Nobody presses Refresh.
+	stub.setGroup({
+		{ name = "Rageblue", class = "PALADIN", role = "TANK" },
+		{ name = "Solens",   class = "PALADIN", role = "HEALER" },
+		{ name = "Barkskin", class = "DRUID",   role = "HEALER" },
+	})
+	stub.fireEvent("GROUP_ROSTER_UPDATE")
+	stub.runTimers()
+
+	local askedForResync = false
+	for _, msg in ipairs(sent) do
+		if msg == "REQ" then askedForResync = true end
+	end
+	T.check("recomputing the plan asked the raid to resync on its own", askedForResync)
+
+	-- And in the meantime, Solens' HEALER role stands in for their spec, so
+	-- the plan does not claim there is no holy paladin just because they have
+	-- not synced yet.
+	T.eq("the raid is credited with a holy paladin in the meantime",
+		stats.holy.value:GetText(), "yes")
+end
+
+--------------------------------------------------------------------------
+print("== an incoming PLPWR broadcast refreshes an open plan on its own ==")
+do
+	local stats = APP.MainFrame.planPane.stats
+	stub.timers = {}
+
+	-- Solens' talents land over the addon channel, the way PallyPower's own
+	-- REQ reply would -- with no further roster event and nobody pressing
+	-- Refresh.
+	stub.fireEvent("CHAT_MSG_ADDON", "PLPWR", "SELF 7270101010nn@nnnnnnnnn", "RAID", "Solens")
+
+	T.check("a refresh was scheduled off the back of it", #stub.timers > 0)
+	stub.runTimers()
+	T.eq("Solens is now known rather than guessed", APP.PP:InferSpec("Solens"), "HOLY")
+end
+
+--------------------------------------------------------------------------
 print("== a hidden window does not do the work ==")
 do
 	APP.MainFrame.frame:Hide()

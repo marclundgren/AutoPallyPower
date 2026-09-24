@@ -75,6 +75,23 @@ caster DPS build, the caster profile is used. Both want Salvation first, and the
 second slot is then Kings — useful to either build, where Might would be dead
 weight on a caster.
 
+A paladin's role also stands in for their *own* spec when step 3 comes back
+unknown — no PallyPower, or simply not heard from yet this session, which
+happens to anyone already in the raid before you logged in or joined. Without
+this, an unsynced Holy paladin reads as "no holy paladin in this raid" on the
+plan, not as "unknown" — a much stronger and more visible wrong answer. A
+healer role is treated as Holy, damage as Retribution, and a tank slot (or the
+group finder's Tank role) as Protection.
+
+Because a spec change on someone else's character is not something the client
+reports, staying current still needs asking — that is what **Refresh** and
+`/app refresh` do, on request. The one thing that *is* automatic: if a paladin
+in the raid has never sent a single message on PallyPower's channel, the plan
+asks the group to resync on its own the next time it solves, so their data
+shows up without anyone noticing they needed to click something. It only ever
+does this once every 20 seconds, and never merely because someone's spec might
+have changed since the last resync — that stays a deliberate action.
+
 ## When your assignments will not stick
 
 Another paladin's client only accepts assignments you set for them if you are
