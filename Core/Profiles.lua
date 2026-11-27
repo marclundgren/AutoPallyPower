@@ -117,35 +117,35 @@ P.defaults = {
 	-- Tanks. Rule zero -- never salvation -- is enforced by the solver as
 	-- a hard constraint, not by these lists.
 	--------------------------------------------------------------------
+	-- Every tank list ends in Sanctuary where the raid can supply it. It is
+	-- last because it is worth less to them than Kings or Might, not because it
+	-- is optional: where a protection paladin is carrying Salvation for the
+	-- raid, the solver treats Sanctuary on a tank as part of the plan rather
+	-- than as an upgrade to be weighed against the override threshold.
 	WARRIOR_TANK = {
 		label = "Warrior - Protection", class = "WARRIOR", role = "TANK", tank = true,
-		priority         = { KINGS, MIGHT, cond(LIGHT, HOLY), cond(SANCTUARY, PROT) },
 		priority = { KINGS, cond(LIGHT, HOLY), MIGHT, cond(SANCTUARY, PROT) },
 	},
 	DRUID_TANK = {
 		label = "Druid - Feral (Tank)", class = "DRUID", role = "TANK", tank = true,
 		-- Wisdom is genuinely wanted but low: ferals powershift out of form
 		-- for the occasional cast and need a trickle of mana for it.
-		priority         = { KINGS, MIGHT, cond(LIGHT, HOLY), WISDOM },
-		priority = { KINGS, cond(LIGHT, HOLY), MIGHT, WISDOM },
+		priority = { KINGS, cond(LIGHT, HOLY), MIGHT, WISDOM, cond(SANCTUARY, PROT) },
 	},
 	PALADIN_TANK = {
 		label = "Paladin - Protection", class = "PALADIN", role = "TANK", tank = true,
 		-- Sanctuary sits second because it is simultaneously the threat option
 		-- and a damage reduction, so it does not trade off the way Might does.
-		priority         = { KINGS, cond(SANCTUARY, PROT), cond(LIGHT, HOLY), WISDOM },
 		priority = { KINGS, cond(SANCTUARY, PROT), cond(LIGHT, HOLY), WISDOM },
 	},
 	-- Caster tanking is rare but real (spellsteal mages, warlock tanks).
 	MAGE_TANK = {
 		label = "Mage - Tank", class = "MAGE", role = "TANK", tank = true,
-		priority         = { KINGS, WISDOM, cond(LIGHT, HOLY) },
-		priority = { KINGS, cond(LIGHT, HOLY), WISDOM },
+		priority = { KINGS, cond(LIGHT, HOLY), WISDOM, cond(SANCTUARY, PROT) },
 	},
 	WARLOCK_TANK = {
 		label = "Warlock - Tank", class = "WARLOCK", role = "TANK", tank = true,
-		priority         = { KINGS, WISDOM, cond(LIGHT, HOLY) },
-		priority = { KINGS, cond(LIGHT, HOLY), WISDOM },
+		priority = { KINGS, cond(LIGHT, HOLY), WISDOM, cond(SANCTUARY, PROT) },
 	},
 }
 

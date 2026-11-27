@@ -66,60 +66,50 @@ do
 end
 
 --------------------------------------------------------------------------
-print("== in a party, only the party leader carries authority ==")
-do
-	fresh()
-	PP:OnAddonMessage("PLPWR", "FREEASSIGN NO", nil, "Closedpally")
-
-	-- This is the case that prompted all of it: a party, free assignment off,
-	-- and no way to set their row.
-	withGroup({ raid = false, leader = false }, function()
-		T.check("no authority as a party member", PP:HaveAuthority() == false)
-		local ok, reason = PP:ControlStatus("Closedpally")
-		T.check("cannot set them", ok == false)
-		T.eq("and says exactly why", reason, "FREE_ASSIGN_OFF")
-	end)
-
-	withGroup({ raid = false, leader = true }, function()
-		T.check("party leader has authority", PP:HaveAuthority())
-		local ok, reason = PP:ControlStatus("Closedpally")
-		T.check("can set them", ok)
-		T.eq("by authority", reason, "AUTHORITY")
-	end)
-
-	-- PallyPower credits no assistant in a party, so neither do we.
-	withGroup({ raid = false, leader = false, assistant = true }, function()
-		T.check("assistant means nothing in a party", PP:HaveAuthority() == false)
-	end)
-end
-
---------------------------------------------------------------------------
-print("== in a raid, assistant is enough ==")
-do
-	fresh()
-	PP:OnAddonMessage("PLPWR", "FREEASSIGN NO", nil, "Closedpally")
-
-	withGroup({ raid = true, leader = false, assistant = true }, function()
-		T.check("raid assistant has authority", PP:HaveAuthority())
-		T.check("can set a closed paladin", PP:CanControl("Closedpally"))
-	end)
-	withGroup({ raid = true, leader = false, assistant = false }, function()
-		T.check("plain raid member has none", PP:HaveAuthority() == false)
-		T.check("cannot set a closed paladin", PP:CanControl("Closedpally") == false)
-	end)
-end
-
---------------------------------------------------------------------------
-print("== inside an instance group nobody carries authority ==")
+print("== raid rank makes no difference either way ==")
 do
 	fresh()
 	PP:OnAddonMessage("PLPWR", "FREEASSIGN NO", nil, "Closedpally")
 	PP:OnAddonMessage("PLPWR", "FREEASSIGN YES", nil, "Openpally")
 
-	withGroup({ raid = true, leader = true, instanceGroup = true, inInstance = true }, function()
-		T.check("leading an instance group is not enough", PP:HaveAuthority() == false)
-		T.check("closed paladin still blocked", PP:CanControl("Closedpally") == false)
-		T.check("free assignment still works", PP:CanControl("Openpally"))
+	-- Tested in a live raid: leader, assistant and plain member all set
+	-- assignments identically, so rank is not consulted anywhere. Every shape
+	-- of group has to give the same answer.
+	local shapes = {
+		{ label = "party member",   raid = false, leader = false },
+		{ label = "party leader",   raid = false, leader = true },
+		{ label = "raid member",    raid = true,  leader = false },
+		{ label = "raid assistant", raid = true,  leader = false, assistant = true },
+		{ label = "raid leader",    raid = true,  leader = true },
+		{ label = "instance group", raid = true,  leader = true,
+		  instanceGroup = true, inInstance = true },
+	}
+	for _, shape in ipairs(shapes) do
+		withGroup(shape, function()
+			T.check(shape.label .. ": free assignment on can be set",
+				PP:CanControl("Openpally"))
+			T.check(shape.label .. ": free assignment off cannot",
+				PP:CanControl("Closedpally") == false)
+			local _, reason = PP:ControlStatus("Closedpally")
+			T.eq(shape.label .. ": and says exactly why", reason, "FREE_ASSIGN_OFF")
+			T.check(shape.label .. ": our own row is always ours",
+				PP:CanControl("Rageblue"))
+		end)
+	end
+end
+
+--------------------------------------------------------------------------
+print("== a paladin who has not said either way is not assumed open ==")
+do
+	fresh()
+	-- They are running PallyPower -- they sent SELF -- but never broadcast a
+	-- free assignment state. Guessing "open" here would write a row into our
+	-- own grid that their client may have thrown away.
+	PP:OnAddonMessage("PLPWR", "SELF 7261314130nn@nnnnnnnnn", nil, "Quietpally")
+	withGroup({ raid = true, leader = true }, function()
+		local ok, reason = PP:ControlStatus("Quietpally")
+		T.check("not controllable on an unknown state", ok == false)
+		T.eq("and named as unknown rather than closed", reason, "UNKNOWN")
 	end)
 end
 

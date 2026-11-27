@@ -195,7 +195,7 @@ end
 --------------------------------------------------------------------------
 print("== generated raids exercise paladins without Kings ==")
 do
-	local withoutKings, total = 0, 0
+	local withoutKings, total, mandated = 0, 0, 0
 	for seed = 1, 120 do
 		local raid = TR:Generate({ seed = seed, raidSize = 25, paladins = 3, tanks = 2, healers = 5 })
 		for _, p in ipairs(raid.paladins) do
@@ -208,8 +208,16 @@ do
 			if m.tank then
 				T.check("tank kept off Salvation under random talents",
 					not r.delivered[m.name][B.SALVATION], m.name)
+				-- The mandate is only stated as a dominating score, so this
+				-- sweep is where "it always finds the route" is actually tested.
+				if r.mandateSanctuary then
+					T.check("every tank gets Sanctuary while the pin holds",
+						r.delivered[m.name][B.SANCTUARY] == true,
+						("seed %d, %s"):format(seed, m.name))
+				end
 			end
 		end
+		if r.mandateSanctuary then mandated = mandated + 1 end
 		local byName = {}
 		for _, p in ipairs(raid.paladins) do byName[p.name] = p end
 		for name, row in pairs(r.grid) do
@@ -223,6 +231,8 @@ do
 	end
 	T.check("the no-Kings case actually occurred in the sample",
 		withoutKings > 0, ("%d of %d paladins"):format(withoutKings, total))
+	T.check("and the Sanctuary mandate was in force for some of it",
+		mandated > 0, ("%d of 120 raids"):format(mandated))
 end
 
 T.report("talents")

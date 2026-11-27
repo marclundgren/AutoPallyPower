@@ -41,8 +41,6 @@ local function apply(result, opts)
 	_G.IsInRaid = function() return true end
 	_G.IsInGroup = function() return true end
 	_G.IsInInstance = function() return false end
-	_G.UnitIsGroupLeader = function() return true end
-	_G.UnitIsGroupAssistant = function() return false end
 
 	PP.observed, PP.heard, PP.freeAssign = {}, {}, {}
 	PP.selfName = (opts or {}).selfName or "Rageblue"
@@ -54,7 +52,6 @@ end
 local function cleanup()
 	_G.PallyPower, _G.PallyPower_Assignments, _G.PallyPower_NormalAssignments = nil, nil, nil
 	_G.IsInRaid, _G.IsInGroup, _G.IsInInstance = nil, nil, nil
-	_G.UnitIsGroupLeader, _G.UnitIsGroupAssistant = nil, nil
 end
 
 --------------------------------------------------------------------------
@@ -152,8 +149,6 @@ do
 	_G.IsInRaid = function() return true end
 	_G.IsInGroup = function() return true end
 	_G.IsInInstance = function() return false end
-	_G.UnitIsGroupLeader = function() return true end
-	_G.UnitIsGroupAssistant = function() return false end
 	PP.observed, PP.heard, PP.freeAssign = {}, {}, {}
 	PP.selfName = "Rageblue"
 
